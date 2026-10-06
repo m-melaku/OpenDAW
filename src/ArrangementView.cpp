@@ -2,7 +2,7 @@
 
 namespace
 {
-    namespace Colours
+    namespace Palette
     {
         const juce::Colour background   { 0xff26282c };
         const juce::Colour header       { 0xff2e3035 };
@@ -187,7 +187,7 @@ void ArrangementView::showTrackMenu (te::AudioTrack& track)
 //==============================================================================
 void ArrangementView::paint (juce::Graphics& g)
 {
-    g.fillAll (Colours::background);
+    g.fillAll (Palette::background);
 
     const auto tracks = getTracks();
 
@@ -199,22 +199,22 @@ void ArrangementView::paint (juce::Graphics& g)
     for (int i = 0; i < tracks.size(); ++i)
         paintHeader (g, *tracks[i], i);
 
-    g.setColour (Colours::ruler);
+    g.setColour (Palette::ruler);
     g.fillRect (0, 0, headerWidth, rulerHeight);
-    g.setColour (Colours::separator);
+    g.setColour (Palette::separator);
     g.drawVerticalLine (headerWidth - 1, 0.0f, (float) getHeight());
 
     const auto playheadX = (float) timeToX (edit.getTransport().getPosition().inSeconds());
 
     if (playheadX >= headerWidth)
     {
-        g.setColour (Colours::playhead);
+        g.setColour (Palette::playhead);
         g.drawLine (playheadX, 0.0f, playheadX, (float) getHeight(), 1.5f);
     }
 
     if (isDraggingFiles)
     {
-        g.setColour (Colours::clipSelected);
+        g.setColour (Palette::clipSelected);
         g.drawRect (getLocalBounds(), 2);
     }
     else if (tracks.size() <= 1 && (tracks.isEmpty() || tracks[0]->getClips().isEmpty()))
@@ -227,7 +227,7 @@ void ArrangementView::paint (juce::Graphics& g)
 void ArrangementView::paintRuler (juce::Graphics& g)
 {
     const auto area = getLocalBounds().withTrimmedLeft (headerWidth);
-    g.setColour (Colours::ruler);
+    g.setColour (Palette::ruler);
     g.fillRect (area.withHeight (rulerHeight));
 
     auto& ts = edit.tempoSequence;
@@ -255,7 +255,7 @@ void ArrangementView::paintRuler (juce::Graphics& g)
         if (x < headerWidth)
             continue;
 
-        g.setColour (isBar ? Colours::gridBar : Colours::gridBeat);
+        g.setColour (isBar ? Palette::gridBar : Palette::gridBeat);
         g.drawVerticalLine ((int) x, (float) rulerHeight, (float) getHeight());
 
         const auto bar = beat / beatsPerBar;
@@ -269,7 +269,7 @@ void ArrangementView::paintRuler (juce::Graphics& g)
         }
     }
 
-    g.setColour (Colours::separator);
+    g.setColour (Palette::separator);
     g.drawHorizontalLine (rulerHeight - 1, (float) headerWidth, (float) getWidth());
 }
 
@@ -280,7 +280,7 @@ void ArrangementView::paintTrack (juce::Graphics& g, te::AudioTrack& track, int 
     if (y + trackHeight < rulerHeight || y > getHeight())
         return;
 
-    g.setColour (Colours::separator);
+    g.setColour (Palette::separator);
     g.drawHorizontalLine (y + trackHeight - 1, (float) headerWidth, (float) getWidth());
 
     juce::Graphics::ScopedSaveState saveState (g);
@@ -297,7 +297,7 @@ void ArrangementView::paintClip (juce::Graphics& g, te::Clip& clip, juce::Rectan
 
     const auto isSelected = clip.itemID == selectedClipID;
 
-    g.setColour (isSelected ? Colours::clipSelected : Colours::clip);
+    g.setColour (isSelected ? Palette::clipSelected : Palette::clip);
     g.fillRoundedRectangle (bounds, 4.0f);
 
     if (auto* audioClip = dynamic_cast<te::AudioClipBase*> (&clip))
@@ -306,7 +306,7 @@ void ArrangementView::paintClip (juce::Graphics& g, te::Clip& clip, juce::Rectan
         auto& thumb = getThumbnail (*audioClip);
         const auto waveArea = bounds.reduced (2.0f).withTrimmedTop (14.0f).toNearestInt();
 
-        g.setColour (Colours::waveform.withAlpha (0.85f));
+        g.setColour (Palette::waveform.withAlpha (0.85f));
         thumb.drawChannels (g, waveArea, te::TimeRange (te::toPosition (pos.getOffset()), pos.getLength()), 1.0f);
     }
 
@@ -332,9 +332,9 @@ void ArrangementView::paintHeader (juce::Graphics& g, te::AudioTrack& track, int
     g.reduceClipRegion (0, rulerHeight, headerWidth, getHeight() - rulerHeight);
 
     const juce::Rectangle<int> area (0, y, headerWidth, trackHeight);
-    g.setColour (Colours::header);
+    g.setColour (Palette::header);
     g.fillRect (area);
-    g.setColour (Colours::separator);
+    g.setColour (Palette::separator);
     g.drawHorizontalLine (area.getBottom() - 1, 0.0f, (float) headerWidth);
 
     g.setColour (juce::Colours::white.withAlpha (0.85f));
@@ -343,15 +343,15 @@ void ArrangementView::paintHeader (juce::Graphics& g, te::AudioTrack& track, int
 
     auto drawToggle = [&g] (juce::Rectangle<int> r, const juce::String& text, bool isOn, juce::Colour onColour)
     {
-        g.setColour (isOn ? onColour : Colours::separator);
+        g.setColour (isOn ? onColour : Palette::separator);
         g.fillRoundedRectangle (r.toFloat(), 3.0f);
         g.setColour (isOn ? juce::Colours::black : juce::Colours::white.withAlpha (0.7f));
         g.setFont (11.0f);
         g.drawText (text, r, juce::Justification::centred);
     };
 
-    drawToggle (getMuteButtonBounds (trackIndex), "M", track.isMuted (false), Colours::mute);
-    drawToggle (getSoloButtonBounds (trackIndex), "S", track.isSolo (false), Colours::solo);
+    drawToggle (getMuteButtonBounds (trackIndex), "M", track.isMuted (false), Palette::mute);
+    drawToggle (getSoloButtonBounds (trackIndex), "S", track.isSolo (false), Palette::solo);
 }
 
 //==============================================================================
