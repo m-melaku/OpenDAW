@@ -13,18 +13,18 @@ recording and mixing.
 
 Requirements:
 - Windows 10/11 (x64)
-- [Visual Studio 2022](https://visualstudio.microsoft.com/vs/community/) with the **Desktop development with C++** workload (this includes CMake)
+- [Visual Studio 2022 or newer](https://visualstudio.microsoft.com/vs/community/) with the **Desktop development with C++** workload (this includes CMake)
 
 ```sh
 git clone https://github.com/<you>/OpenDAW.git
 cd OpenDAW
 git -c url."https://github.com/".insteadOf="git@github.com:" submodule update --init --recursive
-cmake --preset vs2022
+cmake --preset vs
 cmake --build --preset release
 ```
 
 The app is built to `build/OpenDAW_artefacts/Release/OpenDAW.exe`.
-You can also open `build/OpenDAW.sln` in Visual Studio to build and debug.
+You can also open the `.sln`/`.slnx` file in `build/` in Visual Studio to build and debug.
 
 ## Roadmap
 
