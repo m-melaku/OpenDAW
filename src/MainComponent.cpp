@@ -387,7 +387,7 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
 //==============================================================================
 juce::StringArray MainComponent::getMenuBarNames()
 {
-    return { "File", "Edit" };
+    return { "File", "Edit", "Plugins" };
 }
 
 juce::PopupMenu MainComponent::getMenuForIndex (int menuIndex, const juce::String&)
@@ -431,8 +431,36 @@ juce::PopupMenu MainComponent::getMenuForIndex (int menuIndex, const juce::Strin
             arrangement->setSnapToGrid (snapButton.getToggleState());
         });
     }
+    else if (menuIndex == 2)
+    {
+        const auto numPlugins = engine.getPluginManager().knownPluginList.getNumTypes();
+        addItem ("Scan for Plugins...", {}, true, [this] { showPluginScanner(); });
+        menu.addItem (juce::String (numPlugins) + " plugins found. Right-click a track name to add them",
+                      false, false, nullptr);
+    }
 
     return menu;
+}
+
+void MainComponent::showPluginScanner()
+{
+    auto& pluginManager = engine.getPluginManager();
+
+    auto* scanner = new juce::PluginListComponent (pluginManager.pluginFormatManager,
+                                                   pluginManager.knownPluginList,
+                                                   engine.getTemporaryFileManager().getTempFile ("PluginScanDeadMansPedal"),
+                                                   std::addressof (engine.getPropertyStorage().getPropertiesFile()),
+                                                   true);
+    scanner->setSize (800, 600);
+
+    juce::DialogWindow::LaunchOptions o;
+    o.dialogTitle = "Plugins";
+    o.dialogBackgroundColour = getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId);
+    o.escapeKeyTriggersCloseButton = true;
+    o.useNativeTitleBar = true;
+    o.resizable = true;
+    o.content.setOwned (scanner);
+    o.launchAsync();
 }
 
 //==============================================================================

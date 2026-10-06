@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 #include "ArrangementView.h"
 #include "PianoRoll.h"
+#include "PluginWindow.h"
 
 namespace te = tracktion;
 
@@ -31,7 +32,7 @@ public:
 
 private:
     // The Engine must outlive the Edit, and the Edit must outlive the ArrangementView
-    te::Engine engine { ProjectInfo::projectName };
+    te::Engine engine { ProjectInfo::projectName, std::make_unique<OpenDAWUIBehaviour>(), nullptr };
     std::unique_ptr<te::Edit> edit;
     std::unique_ptr<ArrangementView> arrangement;
     std::unique_ptr<PianoRoll> pianoRoll;
@@ -63,6 +64,7 @@ private:
     void togglePlay();
     void stop();
     void showAudioSettings();
+    void showPluginScanner();
     void updateWindowTitle();
 
     static juce::File getDefaultProjectFolder();
