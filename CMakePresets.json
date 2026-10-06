@@ -6,10 +6,24 @@
       "displayName": "Visual Studio (newest installed, x64)",
       "architecture": "x64",
       "binaryDir": "${sourceDir}/build"
+    },
+    {
+      "name": "ci",
+      "displayName": "CI: Ninja + sccache (run from a VS developer prompt)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-ci",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl",
+        "CMAKE_C_COMPILER_LAUNCHER": "sccache",
+        "CMAKE_CXX_COMPILER_LAUNCHER": "sccache"
+      }
     }
   ],
   "buildPresets": [
     { "name": "debug",   "configurePreset": "vs", "configuration": "Debug" },
-    { "name": "release", "configurePreset": "vs", "configuration": "Release" }
+    { "name": "release", "configurePreset": "vs", "configuration": "Release" },
+    { "name": "ci",      "configurePreset": "ci" }
   ]
 }
