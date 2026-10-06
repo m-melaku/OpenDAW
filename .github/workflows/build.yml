@@ -1,0 +1,29 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tracktion Engine references JUCE via an SSH URL, so rewrite it to HTTPS
+      - name: Fetch submodules
+        run: |
+          git config --global url."https://github.com/".insteadOf "git@github.com:"
+          git submodule update --init --recursive --depth 1
+
+      - name: Configure
+        run: cmake --preset vs2022
+
+      - name: Build
+        run: cmake --build --preset release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenDAW-windows
+          path: build/OpenDAW_artefacts/Release/OpenDAW.exe
