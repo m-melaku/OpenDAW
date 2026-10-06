@@ -53,7 +53,19 @@ void ArrangementView::addInstrumentTrack()
     auto& track = *getTracks().getLast();
     track.setName ("Instrument " + juce::String (getTracks().size()));
     ensureInstrument (track);
+    selectTrack (&track);
     repaint();
+}
+
+void ArrangementView::selectTrack (te::Track* track)
+{
+    if (track == nullptr || track->itemID == selectedTrackID)
+        return;
+
+    selectedTrackID = track->itemID;
+
+    if (onTrackSelected != nullptr)
+        onTrackSelected (selectedTrackID);
 }
 
 void ArrangementView::ensureInstrument (te::AudioTrack& track)
@@ -500,8 +512,15 @@ void ArrangementView::paintHeader (juce::Graphics& g, te::AudioTrack& track, int
     g.reduceClipRegion (0, rulerHeight, headerWidth, getHeight() - rulerHeight);
 
     const juce::Rectangle<int> area (0, y, headerWidth, trackHeight);
-    g.setColour (Palette::header);
+    const auto isSelected = track.itemID == selectedTrackID;
+    g.setColour (isSelected ? Palette::header.brighter (0.25f) : Palette::header);
     g.fillRect (area);
+
+    if (isSelected)
+    {
+        g.setColour (Palette::clipSelected);
+        g.fillRect (area.withWidth (3));
+    }
     g.setColour (Palette::separator);
     g.drawHorizontalLine (area.getBottom() - 1, 0.0f, (float) headerWidth);
 
@@ -564,6 +583,7 @@ void ArrangementView::mouseDown (const juce::MouseEvent& e)
             return;
 
         auto& track = *tracks[index];
+        selectTrack (&track);
 
         if (e.mods.isPopupMenu())
         {
@@ -590,6 +610,7 @@ void ArrangementView::mouseDown (const juce::MouseEvent& e)
     if (auto* clip = findClipAt (pos, mode))
     {
         selectedClipID = clip->itemID;
+        selectTrack (clip->getTrack());
 
         const auto clipPos = clip->getPosition();
         drag.mode = mode;
@@ -718,6 +739,7 @@ void ArrangementView::mouseDoubleClick (const juce::MouseEvent& e)
 
     edit.getUndoManager().beginNewTransaction();
     ensureInstrument (track);
+    selectTrack (&track);
 
     if (auto clip = track.insertMIDIClip ("MIDI Clip", range, nullptr))
     {

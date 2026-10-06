@@ -104,6 +104,7 @@ void MainComponent::setEdit (std::unique_ptr<te::Edit> newEdit)
     arrangement = std::make_unique<ArrangementView> (*edit);
     arrangement->setSnapToGrid (snapButton.getToggleState());
     arrangement->onOpenMidiClip = [this] (te::EditItemID clipID) { openPianoRoll (clipID); };
+    arrangement->onTrackSelected = [this] (te::EditItemID trackID) { routeMidiInputTo (trackID); };
     addAndMakeVisible (*arrangement);
 
     tempoSlider.setValue (edit->tempoSequence.getTempo (0)->getBpm(), juce::dontSendNotification);
@@ -440,6 +441,36 @@ juce::PopupMenu MainComponent::getMenuForIndex (int menuIndex, const juce::Strin
     }
 
     return menu;
+}
+
+void MainComponent::routeMidiInputTo (te::EditItemID trackID)
+{
+    // Like Ableton/Studio One: MIDI keyboards play whichever track is selected
+    if (te::findTrackForID (*edit, trackID) == nullptr)
+        return;
+
+    for (auto& midiIn : engine.getDeviceManager().getMidiInDevices())
+    {
+        midiIn->setMonitorMode (te::InputDevice::MonitorMode::on);
+        midiIn->setEnabled (true);
+    }
+
+    // Input routing is stored in the Edit, but shouldn't count as an unsaved change
+    const auto hadChanges = edit->hasChangedSinceSaved();
+    edit->getTransport().ensureContextAllocated();
+
+    for (auto* instance : edit->getAllInputDevices())
+    {
+        if (instance->getInputDevice().getDeviceType() == te::InputDevice::physicalMidiDevice)
+        {
+            [[maybe_unused]] auto result = instance->setTarget (trackID, true, nullptr, 0);
+        }
+    }
+
+    edit->restartPlayback();
+
+    if (! hadChanges)
+        edit->resetChangedStatus();
 }
 
 void MainComponent::showPluginScanner()

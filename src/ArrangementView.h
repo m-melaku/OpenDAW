@@ -28,6 +28,9 @@ public:
     /** Called when a MIDI clip is double-clicked, or a new one is created. */
     std::function<void (te::EditItemID)> onOpenMidiClip;
 
+    /** Called when the user selects a track (by clicking its header or one of its clips). */
+    std::function<void (te::EditItemID trackID)> onTrackSelected;
+
     void setSnapToGrid (bool shouldSnap)    { snapToGrid = shouldSnap; }
     bool isSnapToGrid() const               { return snapToGrid; }
 
@@ -68,7 +71,7 @@ private:
     };
 
     DragState drag;
-    te::EditItemID selectedClipID;
+    te::EditItemID selectedClipID, selectedTrackID;
     std::map<juce::String, std::unique_ptr<te::SmartThumbnail>> thumbnails;
 
     //==============================================================================
@@ -88,6 +91,7 @@ private:
 
     te::SmartThumbnail& getThumbnail (te::AudioClipBase&);
     te::AudioTrack& getTrackForDrop (int trackIndex);
+    void selectTrack (te::Track*);
     void ensureInstrument (te::AudioTrack&);
     void setInstrument (te::AudioTrack&, te::Plugin::Ptr);
     void addEffect (te::AudioTrack&, te::Plugin::Ptr);

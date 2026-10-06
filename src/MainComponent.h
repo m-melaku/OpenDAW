@@ -65,6 +65,7 @@ private:
     void stop();
     void showAudioSettings();
     void showPluginScanner();
+    void routeMidiInputTo (te::EditItemID trackID);
     void updateWindowTitle();
 
     static juce::File getDefaultProjectFolder();
