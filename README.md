@@ -7,7 +7,61 @@ A free, open-source digital audio workstation for Windows, built on
 an FL Studio-grade piano roll and step sequencer, an Ableton-style clip launcher, and Pro Tools-level
 recording and mixing.
 
-> Status: early development (Milestone 0).
+> Status: early development (Milestone 2).
+
+## Downloading
+
+Every build on GitHub produces a ready-to-run `OpenDAW.exe`: open the
+[Actions tab](../../actions), pick the latest green run, and download **OpenDAW-windows** under *Artifacts*.
+Windows SmartScreen may warn about an unsigned app; choose **More info → Run anyway**.
+
+## Using OpenDAW
+
+**Getting sound in**
+- Drag audio files (WAV, MP3, FLAC, OGG, AIFF) from Explorer onto a track; they land at the beat under the mouse
+- `+ Instrument` (Ctrl+I) adds a track with the built-in 4OSC synth
+- Double-click empty space on a track to create a one-bar MIDI clip and open it in the piano roll
+- MIDI keyboards play whichever track is selected (click a track name or clip to select it)
+
+**Arranging**
+- Drag a clip to move it in time or onto another track; drag its left/right edge to trim it
+- Moves and trims snap to beats while **Snap** is on
+- Click the ruler or empty space to move the playhead
+
+**Piano roll** (double-click a MIDI clip)
+- Click to draw a note; drag while drawing to set its length (new notes reuse the last length)
+- Drag a note to move it, drag its right edge to resize it
+- Right-click or double-click a note to delete it
+- Choose the grid size (1/4 to 1/32) in the editor header; Escape closes the editor
+
+**Tracks and plugins** (right-click a track name)
+- *Instrument*: 4OSC or any scanned VST3 instrument
+- *Add Effect*: built-in EQ, Compressor, Reverb, Delay, Chorus, Phaser, Low Pass, or any scanned VST3 effect
+- *Plugins on this Track*: open a VST3's editor, bypass, or remove
+- **M** / **S** buttons mute and solo the track
+- Find your VST3s with **Plugins → Scan for Plugins** (only needed once)
+
+**Navigation**
+
+| Action | Mouse / Key |
+|---|---|
+| Zoom | Ctrl + wheel |
+| Scroll horizontally | Shift + wheel |
+| Scroll tracks / pitches | Wheel |
+
+**Shortcuts**
+
+| Key | Action |
+|---|---|
+| Space | Play / pause |
+| Enter | Stop and return to start |
+| Ctrl+Z / Ctrl+Y | Undo / redo |
+| Delete | Delete selected clip or note |
+| Ctrl+T / Ctrl+I | Add track / instrument track |
+| Ctrl+N / Ctrl+O | New / open project |
+| Ctrl+S / Ctrl+Shift+S | Save / save as |
+
+Projects are saved as `.opendaw` files. They store the full path to each audio file, so keep your audio where it is.
 
 ## Building
 
@@ -29,8 +83,8 @@ You can also open the `.sln`/`.slnx` file in `build/` in Visual Studio to build 
 ## Roadmap
 
 - [x] **M0: Playable core.** Transport, tempo, and drag-and-drop audio files onto tracks
-- [ ] **M1: Arrangement.** Move and trim clips, multiple tracks, undo/redo, save and load projects
-- [ ] **M2: MIDI.** MIDI tracks, piano roll, VST3 instruments
+- [x] **M1: Arrangement.** Move and trim clips, multiple tracks, undo/redo, save and load projects
+- [x] **M2: MIDI.** MIDI tracks, piano roll, VST3 instruments and effects, MIDI keyboard input
 - [ ] **M3: Mixing.** Mixer view, sends and buses, automation, built-in EQ, compressor and reverb
 - [ ] **M4: Beat making.** Step sequencer and pattern workflow
 - [ ] **M5: Performance.** Clip launcher
