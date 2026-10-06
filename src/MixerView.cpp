@@ -89,6 +89,63 @@ void LevelMeter::paint (juce::Graphics& g)
 }
 
 //==============================================================================
+ChannelStrip::SendControl::SendControl (te::Edit& e, te::AuxSendPlugin& s)
+    : edit (e), send (&s)
+{
+    knob.setRange (minDb, maxDb, 0.1);
+    knob.setSkewFactorFromMidPoint (-12.0);
+    knob.setDoubleClickReturnValue (true, 0.0);
+    knob.setTextValueSuffix (" dB");
+    knob.setWantsKeyboardFocus (false);
+    knob.onDragStart = [this] { edit.getUndoManager().beginNewTransaction(); };
+    knob.onValueChange = [this]
+    {
+        if (auto* s = dynamic_cast<te::AuxSendPlugin*> (send.get()))
+            s->setGainDb ((float) knob.getValue());
+    };
+    addAndMakeVisible (knob);
+
+    busName.setFont (juce::FontOptions (11.0f));
+    busName.setInterceptsMouseClicks (false, false);
+    addAndMakeVisible (busName);
+
+    refresh();
+}
+
+void ChannelStrip::SendControl::resized()
+{
+    auto r = getLocalBounds();
+    knob.setBounds (r.removeFromLeft (r.getHeight()));
+    busName.setBounds (r);
+}
+
+void ChannelStrip::SendControl::mouseDown (const juce::MouseEvent& e)
+{
+    if (! e.mods.isPopupMenu())
+        return;
+
+    juce::PopupMenu menu;
+    menu.addItem ("Remove Send", [this, ref = send]
+    {
+        edit.getUndoManager().beginNewTransaction();
+        ref->deleteFromParent();
+    });
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this));
+}
+
+void ChannelStrip::SendControl::refresh()
+{
+    if (auto* s = dynamic_cast<te::AuxSendPlugin*> (send.get()))
+    {
+        busName.setText ("> " + PluginMenus::getBusTrackName (edit, s->busNumber.get()), juce::dontSendNotification);
+        knob.setTooltip ("Send to " + busName.getText().substring (2) + " (right-click the name to remove)");
+
+        if (! knob.isMouseButtonDown())
+            knob.setValue (juce::jlimit (minDb, maxDb, s->getGainDb()), juce::dontSendNotification);
+    }
+}
+
+//==============================================================================
 ChannelStrip::ChannelStrip (te::Edit& e, te::EditItemID id)
     : edit (e), trackID (id)
 {
@@ -102,6 +159,17 @@ ChannelStrip::ChannelStrip (te::Edit& e, te::EditItemID id)
             .showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addEffectButton));
     };
     addAndMakeVisible (addEffectButton);
+
+    if (! isMaster())
+    {
+        addSendButton.onClick = [this]
+        {
+            PluginMenus::createSendMenu (edit, trackID)
+                .showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&addSendButton));
+        };
+        addSendButton.setWantsKeyboardFocus (false);
+        addAndMakeVisible (addSendButton);
+    }
 
     panKnob.setRange (-1.0, 1.0);
     panKnob.setDoubleClickReturnValue (true, 0.0);
@@ -240,18 +308,40 @@ void ChannelStrip::timerCallback()
             panKnob.setValue (vol->getPan(), juce::dontSendNotification);
     }
 
-    // Rebuild the plugin slots only when the chain (or a bypass state) changes
+    // Rebuild the plugin slots and sends only when the chain (or a bypass state) changes
     juce::String signature;
 
     if (auto* chain = PluginMenus::findChain (edit, trackID))
+    {
         for (auto* p : PluginMenus::getUserPlugins (*chain))
             signature << p->itemID.toString() << (p->isEnabled() ? "+" : "-") << p->getName() << ";";
+
+        signature << "|";
+
+        for (auto* s : PluginMenus::getSends (*chain))
+            signature << s->itemID.toString() << ":" << s->busNumber.get() << ";";
+    }
 
     if (signature != pluginSignature)
     {
         pluginSignature = signature;
         rebuildPluginButtons();
+        rebuildSendControls();
     }
+
+    for (auto* control : sendControls)
+        control->refresh();
+}
+
+void ChannelStrip::rebuildSendControls()
+{
+    sendControls.clear();
+
+    if (auto* chain = PluginMenus::findChain (edit, trackID))
+        for (auto* send : PluginMenus::getSends (*chain))
+            addAndMakeVisible (sendControls.add (new SendControl (edit, *send)));
+
+    resized();
 }
 
 void ChannelStrip::paint (juce::Graphics& g)
@@ -275,6 +365,15 @@ void ChannelStrip::resized()
 
     addEffectButton.setBounds (area.removeFromTop (20));
     area.removeFromTop (6);
+
+    if (! isMaster())
+    {
+        for (auto* control : sendControls)
+            control->setBounds (area.removeFromTop (24));
+
+        addSendButton.setBounds (area.removeFromTop (20));
+        area.removeFromTop (6);
+    }
 
     panKnob.setBounds (area.removeFromTop (36).withSizeKeepingCentre (36, 36));
     area.removeFromTop (4);

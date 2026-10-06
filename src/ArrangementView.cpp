@@ -58,6 +58,16 @@ void ArrangementView::addInstrumentTrack()
     repaint();
 }
 
+void ArrangementView::addBusTrack()
+{
+    edit.getUndoManager().beginNewTransaction();
+
+    if (auto* track = PluginMenus::addBusTrack (edit))
+        selectTrack (track);
+
+    repaint();
+}
+
 void ArrangementView::selectTrack (te::Track* track)
 {
     if (track == nullptr || track->itemID == selectedTrackID)
@@ -240,6 +250,7 @@ void ArrangementView::showTrackMenu (te::AudioTrack& track)
     juce::PopupMenu menu;
     menu.addSubMenu ("Instrument", PluginMenus::createInstrumentMenu (edit, trackID));
     menu.addSubMenu ("Add Effect", PluginMenus::createEffectMenu (edit, trackID));
+    menu.addSubMenu ("Send to", PluginMenus::createSendMenu (edit, trackID));
     menu.addSubMenu ("Plugins on this Track", onThisTrack, onThisTrack.getNumItems() > 0);
 
     if (edit.engine.getPluginManager().knownPluginList.getNumTypes() == 0)
@@ -479,16 +490,23 @@ void ArrangementView::paintHeader (juce::Graphics& g, te::AudioTrack& track, int
     g.setFont (13.0f);
     g.drawText (track.getName(), area.reduced (8, 6).withTrimmedRight (56).withHeight (20), juce::Justification::centredLeft);
 
-    // Show the track's instrument under its name
+    // Show what the track is under its name: a bus, or its instrument
+    juce::String subtitle = PluginMenus::getBusNumber (track) >= 0 ? juce::String ("Bus (receives sends)") : juce::String();
+
     for (auto* plugin : track.pluginList.getPlugins())
     {
-        if (plugin->isSynth())
+        if (subtitle.isEmpty() && plugin->isSynth())
         {
-            g.setColour (juce::Colours::white.withAlpha (0.5f));
-            g.setFont (11.0f);
-            g.drawText (plugin->getName(), area.reduced (8, 6).withTrimmedTop (22).withHeight (16), juce::Justification::centredLeft);
+            subtitle = plugin->getName();
             break;
         }
+    }
+
+    if (subtitle.isNotEmpty())
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.5f));
+        g.setFont (11.0f);
+        g.drawText (subtitle, area.reduced (8, 6).withTrimmedTop (22).withHeight (16), juce::Justification::centredLeft);
     }
 
     auto drawToggle = [&g] (juce::Rectangle<int> r, const juce::String& text, bool isOn, juce::Colour onColour)

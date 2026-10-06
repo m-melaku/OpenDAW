@@ -414,6 +414,7 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
     if (isCommand (key, 'S', true))            { saveProject (true); return true; }
     if (isCommand (key, 'T'))                  { arrangement->addTrack(); return true; }
     if (isCommand (key, 'I'))                  { arrangement->addInstrumentTrack(); return true; }
+    if (isCommand (key, 'B'))                  { arrangement->addBusTrack(); return true; }
     if (isCommand (key, 'M'))                  { toggleMixer(); return true; }
     if (key == juce::KeyPress::escapeKey
          && (pianoRoll != nullptr
@@ -465,6 +466,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int menuIndex, const juce::Strin
         addItem ("Show Mixer",    "Ctrl+M", true, [this] { toggleMixer(); });
         addItem ("Add Track",     "Ctrl+T", true, [this] { arrangement->addTrack(); });
         addItem ("Add Instrument Track", "Ctrl+I", true, [this] { arrangement->addInstrumentTrack(); });
+        addItem ("Add Bus Track", "Ctrl+B", true, [this] { arrangement->addBusTrack(); });
         menu.addSeparator();
         menu.addItem ("Snap to Grid", true, snapButton.getToggleState(), [this]
         {

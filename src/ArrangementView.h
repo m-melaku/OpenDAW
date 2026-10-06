@@ -22,6 +22,7 @@ public:
 
     void addTrack();
     void addInstrumentTrack();
+    void addBusTrack();
     void deleteSelectedClip();
     void splitSelectedClipAtPlayhead();
     void zoomToFit();

@@ -32,4 +32,22 @@ namespace PluginMenus
 
     /** Makes sure the master chain ends with a level meter, for the mixer's master meter. */
     te::LevelMeterPlugin* ensureMasterMeter (te::Edit&);
+
+    //==============================================================================
+    // Buses: a bus is an ordinary track whose chain starts with an AuxReturn plugin.
+
+    /** Adds a new "Bus N" track that receives a fresh bus number. Returns the new track. */
+    te::AudioTrack* addBusTrack (te::Edit&);
+
+    /** The bus number a track receives, or -1 if it isn't a bus. */
+    int getBusNumber (te::AudioTrack&);
+
+    /** "Send to <bus>" items for every bus except the track itself. Sends are post-fader. */
+    juce::PopupMenu createSendMenu (te::Edit&, te::EditItemID trackID);
+
+    /** The sends on a chain, in order. */
+    juce::Array<te::AuxSendPlugin*> getSends (te::PluginList&);
+
+    /** The name of the bus track that receives a bus number. */
+    juce::String getBusTrackName (te::Edit&, int busNumber);
 }

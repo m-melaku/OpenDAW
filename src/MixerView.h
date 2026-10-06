@@ -59,6 +59,23 @@ private:
     };
 
     juce::OwnedArray<PluginSlot> pluginButtons;
+
+    /** A send level knob. Right-click the bus name to remove the send. */
+    struct SendControl : public juce::Component
+    {
+        SendControl (te::Edit&, te::AuxSendPlugin&);
+        void resized() override;
+        void mouseDown (const juce::MouseEvent&) override;
+        void refresh();
+
+        te::Edit& edit;
+        te::Plugin::Ptr send;
+        juce::Slider knob { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
+        juce::Label busName;
+    };
+
+    juce::OwnedArray<SendControl> sendControls;
+    juce::TextButton addSendButton { "+ Send" };
     juce::TextButton addEffectButton { "+ FX" };
     juce::Slider panKnob { juce::Slider::RotaryHorizontalVerticalDrag, juce::Slider::NoTextBox };
     juce::Slider fader { juce::Slider::LinearVertical, juce::Slider::TextBoxBelow };
@@ -71,6 +88,7 @@ private:
     bool isMaster() const   { return trackID.isInvalid(); }
 
     void rebuildPluginButtons();
+    void rebuildSendControls();
     void timerCallback() override;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (ChannelStrip)

@@ -10,6 +10,13 @@ namespace
             || dynamic_cast<te::LevelMeterPlugin*> (p) != nullptr;
     }
 
+    /** Sends and returns are shown as bus controls rather than plugin slots. */
+    bool isRoutingPlugin (te::Plugin* p)
+    {
+        return dynamic_cast<te::AuxSendPlugin*> (p) != nullptr
+            || dynamic_cast<te::AuxReturnPlugin*> (p) != nullptr;
+    }
+
     /** Wraps an action so it runs on a freshly looked-up chain, inside a new undo transaction. */
     std::function<void()> onChain (te::Edit& edit, te::EditItemID trackID, std::function<void (te::PluginList&, te::AudioTrack*)> action)
     {
@@ -122,7 +129,7 @@ juce::Array<te::Plugin*> getUserPlugins (te::PluginList& chain)
     juce::Array<te::Plugin*> result;
 
     for (auto* p : chain.getPlugins())
-        if (! isFixedPlugin (p))
+        if (! isFixedPlugin (p) && ! isRoutingPlugin (p))
             result.add (p);
 
     return result;
@@ -193,5 +200,102 @@ te::LevelMeterPlugin* ensureMasterMeter (te::Edit& edit)
     }
 
     return nullptr;
+}
+
+//==============================================================================
+int getBusNumber (te::AudioTrack& track)
+{
+    for (auto* p : track.pluginList.getPlugins())
+        if (auto* ret = dynamic_cast<te::AuxReturnPlugin*> (p))
+            return ret->busNumber.get();
+
+    return -1;
+}
+
+juce::String getBusTrackName (te::Edit& edit, int busNumber)
+{
+    for (auto* track : te::getAudioTracks (edit))
+        if (getBusNumber (*track) == busNumber)
+            return track->getName();
+
+    return "Bus " + juce::String (busNumber + 1);
+}
+
+te::AudioTrack* addBusTrack (te::Edit& edit)
+{
+    int busNumber = 0;
+
+    for (auto* track : te::getAudioTracks (edit))
+        busNumber = juce::jmax (busNumber, getBusNumber (*track) + 1);
+
+    edit.ensureNumberOfAudioTracks (te::getAudioTracks (edit).size() + 1);
+    auto* track = te::getAudioTracks (edit).getLast();
+    track->setName ("Bus " + juce::String (busNumber + 1));
+
+    if (auto plugin = edit.getPluginCache().createNewPlugin (te::AuxReturnPlugin::xmlTypeName, {}))
+    {
+        if (auto* ret = dynamic_cast<te::AuxReturnPlugin*> (plugin.get()))
+            ret->busNumber = busNumber;
+
+        track->pluginList.insertPlugin (plugin, 0, nullptr);
+    }
+
+    return track;
+}
+
+juce::Array<te::AuxSendPlugin*> getSends (te::PluginList& chain)
+{
+    juce::Array<te::AuxSendPlugin*> sends;
+
+    for (auto* p : chain.getPlugins())
+        if (auto* send = dynamic_cast<te::AuxSendPlugin*> (p))
+            sends.add (send);
+
+    return sends;
+}
+
+juce::PopupMenu createSendMenu (te::Edit& edit, te::EditItemID trackID)
+{
+    juce::PopupMenu menu;
+    auto* source = dynamic_cast<te::AudioTrack*> (te::findTrackForID (edit, trackID));
+
+    if (source == nullptr)
+        return menu;
+
+    juce::Array<int> existingSends;
+
+    for (auto* send : getSends (source->pluginList))
+        existingSends.add (send->busNumber.get());
+
+    for (auto* bus : te::getAudioTracks (edit))
+    {
+        const auto busNumber = getBusNumber (*bus);
+
+        if (busNumber < 0 || bus == source)
+            continue;
+
+        menu.addItem ("Send to " + bus->getName(), ! existingSends.contains (busNumber), false,
+                      onChain (edit, trackID, [&edit, busNumber] (te::PluginList& chain, te::AudioTrack* track)
+        {
+            auto plugin = edit.getPluginCache().createNewPlugin (te::AuxSendPlugin::xmlTypeName, {});
+
+            if (plugin == nullptr || track == nullptr)
+                return;
+
+            if (auto* send = dynamic_cast<te::AuxSendPlugin*> (plugin.get()))
+            {
+                send->busNumber = busNumber;
+                send->setGainDb (0.0f);
+            }
+
+            // Post-fader: right after the track's volume plugin
+            chain.insertPlugin (plugin, chain.indexOf (track->getVolumePlugin()) + 1, nullptr);
+        }));
+    }
+
+    if (menu.getNumItems() == 0)
+        menu.addItem ("(No buses yet: use Edit > Add Bus Track)", false, false, nullptr);
+
+    return menu;
 }
 }
