@@ -21,8 +21,12 @@ public:
     ~ArrangementView() override;
 
     void addTrack();
+    void addInstrumentTrack();
     void deleteSelectedClip();
     bool hasSelectedClip() const;
+
+    /** Called when a MIDI clip is double-clicked, or a new one is created. */
+    std::function<void (te::EditItemID)> onOpenMidiClip;
 
     void setSnapToGrid (bool shouldSnap)    { snapToGrid = shouldSnap; }
     bool isSnapToGrid() const               { return snapToGrid; }
@@ -33,6 +37,7 @@ public:
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     bool keyPressed (const juce::KeyPress&) override;
 
@@ -83,6 +88,7 @@ private:
 
     te::SmartThumbnail& getThumbnail (te::AudioClipBase&);
     te::AudioTrack& getTrackForDrop (int trackIndex);
+    void ensureInstrument (te::AudioTrack&);
     void showTrackMenu (te::AudioTrack&);
 
     void paintRuler (juce::Graphics&);

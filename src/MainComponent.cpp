@@ -27,7 +27,9 @@ MainComponent::MainComponent()
     playButton.onClick = [this] { togglePlay(); };
     stopButton.onClick = [this] { stop(); };
     addTrackButton.onClick = [this] { arrangement->addTrack(); };
+    addInstrumentButton.onClick = [this] { arrangement->addInstrumentTrack(); };
     settingsButton.onClick = [this] { showAudioSettings(); };
+    closeEditorButton.onClick = [this] { closePianoRoll(); };
     snapButton.onClick = [this] { arrangement->setSnapToGrid (snapButton.getToggleState()); };
     snapButton.setToggleState (true, juce::dontSendNotification);
 
@@ -38,14 +40,32 @@ MainComponent::MainComponent()
     positionLabel.setFont (juce::FontOptions (18.0f));
     positionLabel.setJustificationType (juce::Justification::centred);
 
+    // Piano roll grid sizes, as fractions of a whole note (item ID = denominator)
+    for (auto denominator : { 4, 8, 16, 32 })
+        gridBox.addItem ("Grid 1/" + juce::String (denominator), denominator);
+
+    gridBox.setSelectedId (16, juce::dontSendNotification);
+    gridBox.onChange = [this]
+    {
+        if (pianoRoll != nullptr)
+            pianoRoll->setGridSize (te::BeatDuration::fromBeats (4.0 / gridBox.getSelectedId()));
+    };
+
+    editorTitle.setFont (juce::FontOptions (14.0f, juce::Font::bold));
+
     for (auto* c : std::initializer_list<juce::Component*> { &menuBar, &playButton, &stopButton, &addTrackButton,
-                                                              &settingsButton, &snapButton, &tempoSlider,
-                                                              &tempoLabel, &positionLabel })
+                                                              &addInstrumentButton, &settingsButton, &snapButton,
+                                                              &tempoSlider, &tempoLabel, &positionLabel,
+                                                              &editorTitle, &gridBox, &closeEditorButton })
     {
         // Keep keyboard focus on the arrangement so shortcuts keep working after clicking buttons
         c->setWantsKeyboardFocus (false);
         addAndMakeVisible (c);
     }
+
+    // The editor header is only shown while the piano roll is open
+    for (auto* c : std::initializer_list<juce::Component*> { &editorTitle, &gridBox, &closeEditorButton })
+        c->setVisible (false);
 
     setWantsKeyboardFocus (true);
     setEdit (te::createEmptyEdit (engine, juce::File()));
@@ -56,6 +76,7 @@ MainComponent::MainComponent()
 MainComponent::~MainComponent()
 {
     menuBar.setModel (nullptr);
+    pianoRoll = nullptr;
     arrangement = nullptr;
     edit->getTransport().removeChangeListener (this);
 }
@@ -66,6 +87,7 @@ void MainComponent::setEdit (std::unique_ptr<te::Edit> newEdit)
     if (newEdit == nullptr)
         return;
 
+    closePianoRoll();
     arrangement = nullptr;
 
     if (edit != nullptr)
@@ -81,6 +103,7 @@ void MainComponent::setEdit (std::unique_ptr<te::Edit> newEdit)
 
     arrangement = std::make_unique<ArrangementView> (*edit);
     arrangement->setSnapToGrid (snapButton.getToggleState());
+    arrangement->onOpenMidiClip = [this] (te::EditItemID clipID) { openPianoRoll (clipID); };
     addAndMakeVisible (*arrangement);
 
     tempoSlider.setValue (edit->tempoSequence.getTempo (0)->getBpm(), juce::dontSendNotification);
@@ -89,6 +112,39 @@ void MainComponent::setEdit (std::unique_ptr<te::Edit> newEdit)
     resized();
     updateWindowTitle();
     arrangement->grabKeyboardFocus();
+}
+
+void MainComponent::openPianoRoll (te::EditItemID clipID)
+{
+    auto* clip = te::findClipForID (*edit, clipID);
+
+    if (clip == nullptr)
+        return;
+
+    pianoRoll = std::make_unique<PianoRoll> (*edit, clipID);
+    pianoRoll->setGridSize (te::BeatDuration::fromBeats (4.0 / gridBox.getSelectedId()));
+    addAndMakeVisible (*pianoRoll);
+
+    editorTitle.setText ("Piano Roll: " + clip->getName(), juce::dontSendNotification);
+
+    for (auto* c : std::initializer_list<juce::Component*> { &editorTitle, &gridBox, &closeEditorButton })
+        c->setVisible (true);
+
+    resized();
+    pianoRoll->grabKeyboardFocus();
+}
+
+void MainComponent::closePianoRoll()
+{
+    pianoRoll = nullptr;
+
+    for (auto* c : std::initializer_list<juce::Component*> { &editorTitle, &gridBox, &closeEditorButton })
+        c->setVisible (false);
+
+    resized();
+
+    if (arrangement != nullptr)
+        arrangement->grabKeyboardFocus();
 }
 
 void MainComponent::newProject()
@@ -288,8 +344,22 @@ void MainComponent::resized()
     toolbar.removeFromLeft (16);
     snapButton.setBounds (toolbar.removeFromLeft (70));
     addTrackButton.setBounds (toolbar.removeFromLeft (80));
+    toolbar.removeFromLeft (6);
+    addInstrumentButton.setBounds (toolbar.removeFromLeft (100));
     settingsButton.setBounds (toolbar.removeFromRight (120));
     positionLabel.setBounds (toolbar);
+
+    if (pianoRoll != nullptr)
+    {
+        auto editorArea = area.removeFromBottom (juce::jmax (220, area.getHeight() * 45 / 100));
+        auto header = editorArea.removeFromTop (editorHeaderHeight).reduced (6, 3);
+
+        closeEditorButton.setBounds (header.removeFromRight (70));
+        header.removeFromRight (6);
+        gridBox.setBounds (header.removeFromRight (110));
+        editorTitle.setBounds (header);
+        pianoRoll->setBounds (editorArea);
+    }
 
     if (arrangement != nullptr)
         arrangement->setBounds (area);
@@ -307,6 +377,9 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
     if (isCommand (key, 'S'))                  { saveProject (false); return true; }
     if (isCommand (key, 'S', true))            { saveProject (true); return true; }
     if (isCommand (key, 'T'))                  { arrangement->addTrack(); return true; }
+    if (isCommand (key, 'I'))                  { arrangement->addInstrumentTrack(); return true; }
+    if (key == juce::KeyPress::escapeKey
+         && pianoRoll != nullptr)              { closePianoRoll(); return true; }
 
     return false;
 }
@@ -350,6 +423,7 @@ juce::PopupMenu MainComponent::getMenuForIndex (int menuIndex, const juce::Strin
         menu.addSeparator();
         addItem ("Delete Clip",   "Del",    arrangement->hasSelectedClip(), [this] { arrangement->deleteSelectedClip(); });
         addItem ("Add Track",     "Ctrl+T", true, [this] { arrangement->addTrack(); });
+        addItem ("Add Instrument Track", "Ctrl+I", true, [this] { arrangement->addInstrumentTrack(); });
         menu.addSeparator();
         menu.addItem ("Snap to Grid", true, snapButton.getToggleState(), [this]
         {
