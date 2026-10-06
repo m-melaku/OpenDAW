@@ -24,6 +24,8 @@ juce_add_gui_app(OpenDAW
 juce_generate_juce_header(OpenDAW)
 
 target_sources(OpenDAW PRIVATE
+    src/ArrangementView.cpp
+    src/ArrangementView.h
     src/Main.cpp
     src/MainComponent.cpp
     src/MainComponent.h)

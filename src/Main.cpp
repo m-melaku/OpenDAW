@@ -20,7 +20,10 @@ public:
 
     void systemRequestedQuit() override
     {
-        quit();
+        if (auto* content = mainWindow != nullptr ? dynamic_cast<MainComponent*> (mainWindow->getContentComponent()) : nullptr)
+            content->confirmDiscardChanges ([this] { quit(); });
+        else
+            quit();
     }
 
 private:
