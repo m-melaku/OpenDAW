@@ -91,6 +91,40 @@ void ArrangementView::deleteSelectedClip()
     repaint();
 }
 
+void ArrangementView::splitSelectedClipAtPlayhead()
+{
+    auto* clip = te::findClipForID (edit, selectedClipID);
+
+    if (clip == nullptr)
+        return;
+
+    const auto playhead = edit.getTransport().getPosition();
+    const auto range = clip->getEditTimeRange();
+
+    if (playhead.inSeconds() <= range.getStart().inSeconds() + minClipLength
+         || playhead.inSeconds() >= range.getEnd().inSeconds() - minClipLength)
+        return;
+
+    if (auto* track = clip->getClipTrack())
+    {
+        edit.getUndoManager().beginNewTransaction();
+
+        // The right-hand half becomes the selection, so repeated splits chop forward
+        if (auto* rightHalf = track->splitClip (*clip, playhead))
+            selectedClipID = rightHalf->itemID;
+    }
+
+    repaint();
+}
+
+void ArrangementView::zoomToFit()
+{
+    const auto length = juce::jmax (10.0, edit.getLength().inSeconds() * 1.05);
+    pixelsPerSecond = juce::jlimit (2.0, 2000.0, (getWidth() - headerWidth) / length);
+    scrollSeconds = 0.0;
+    repaint();
+}
+
 bool ArrangementView::hasSelectedClip() const
 {
     return te::findClipForID (edit, selectedClipID) != nullptr;
@@ -156,7 +190,7 @@ te::Clip* ArrangementView::findClipAt (juce::Point<float> pos, DragMode& modeOut
 
         if (bounds.contains (pos))
         {
-            const auto grab = juce::jmin ((float) edgeGrabWidth, bounds.getWidth() / 3.0f);
+            const auto grab = juce::jmin ((float) edgeGrabWidth, bounds.getWidth() / 4.0f);
 
             if (pos.x < bounds.getX() + grab)          modeOut = DragMode::trimStart;
             else if (pos.x > bounds.getRight() - grab) modeOut = DragMode::trimEnd;
@@ -499,6 +533,24 @@ void ArrangementView::paintClip (juce::Graphics& g, te::Clip& clip, juce::Rectan
         g.setColour (juce::Colours::white);
         g.drawRoundedRectangle (bounds, 4.0f, 1.5f);
     }
+
+    // Trim handles appear on the clip under the mouse (or being trimmed)
+    const auto isTrimming = drag.clipID == clip.itemID && (drag.mode == DragMode::trimStart || drag.mode == DragMode::trimEnd);
+
+    if (clip.itemID == hoverClipID || isTrimming)
+    {
+        const auto activeMode = isTrimming ? drag.mode : hoverMode;
+        const auto handleWidth = juce::jmin ((float) edgeGrabWidth, bounds.getWidth() / 4.0f);
+
+        auto drawHandle = [&] (juce::Rectangle<float> r, bool active)
+        {
+            g.setColour (juce::Colours::white.withAlpha (active ? 0.8f : 0.3f));
+            g.fillRoundedRectangle (r.reduced (1.0f, 6.0f), 2.0f);
+        };
+
+        drawHandle (bounds.withWidth (handleWidth), activeMode == DragMode::trimStart);
+        drawHandle (bounds.withLeft (bounds.getRight() - handleWidth), activeMode == DragMode::trimEnd);
+    }
 }
 
 void ArrangementView::paintHeader (juce::Graphics& g, te::AudioTrack& track, int trackIndex)
@@ -696,13 +748,30 @@ void ArrangementView::mouseUp (const juce::MouseEvent&)
 void ArrangementView::mouseMove (const juce::MouseEvent& e)
 {
     DragMode mode = DragMode::none;
+    auto* clip = findClipAt (e.position, mode);
 
-    if (findClipAt (e.position, mode) == nullptr)
+    if (clip == nullptr)
         setMouseCursor (juce::MouseCursor::NormalCursor);
     else if (mode == DragMode::move)
         setMouseCursor (juce::MouseCursor::DraggingHandCursor);
     else
         setMouseCursor (juce::MouseCursor::LeftRightResizeCursor);
+
+    const auto newHoverID = clip != nullptr ? clip->itemID : te::EditItemID();
+
+    if (newHoverID != hoverClipID || mode != hoverMode)
+    {
+        hoverClipID = newHoverID;
+        hoverMode = mode;
+        repaint();
+    }
+}
+
+void ArrangementView::mouseExit (const juce::MouseEvent&)
+{
+    hoverClipID = {};
+    hoverMode = DragMode::none;
+    repaint();
 }
 
 void ArrangementView::mouseDoubleClick (const juce::MouseEvent& e)
@@ -782,6 +851,20 @@ bool ArrangementView::keyPressed (const juce::KeyPress& key)
         return true;
     }
 
+    const auto letter = juce::CharacterFunctions::toUpperCase ((juce::juce_wchar) key.getKeyCode());
+
+    if (letter == 'E' && key.getModifiers().isCommandDown())
+    {
+        splitSelectedClipAtPlayhead();
+        return true;
+    }
+
+    if (letter == 'F' && ! key.getModifiers().isAnyModifierKeyDown())
+    {
+        zoomToFit();
+        return true;
+    }
+
     return false;
 }
 
@@ -842,6 +925,10 @@ void ArrangementView::filesDropped (const juce::StringArray& files, int x, int y
         // Each additional file goes on the next track down
         trackIndex = te::getAudioTracks (edit).indexOf (&track) + 1;
     }
+
+    // If the new audio runs off-screen, zoom out so both clip edges are visible
+    if (timeToX (edit.getLength().inSeconds()) > getWidth())
+        zoomToFit();
 
     repaint();
 }

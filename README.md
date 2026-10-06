@@ -24,7 +24,9 @@ Windows SmartScreen may warn about an unsigned app; choose **More info → Run a
 - MIDI keyboards play whichever track is selected (click a track name or clip to select it)
 
 **Arranging**
-- Drag a clip to move it in time or onto another track; drag its left/right edge to trim it
+- Drag a clip to move it in time or onto another track
+- Hover a clip to show its trim handles, then drag the left/right handle to trim it
+- Ctrl+E splits the selected clip at the playhead; F zooms to fit the whole project
 - Moves and trims snap to beats while **Snap** is on
 - Click the ruler or empty space to move the playhead
 
@@ -57,6 +59,8 @@ Windows SmartScreen may warn about an unsigned app; choose **More info → Run a
 | Enter | Stop and return to start |
 | Ctrl+Z / Ctrl+Y | Undo / redo |
 | Delete | Delete selected clip or note |
+| Ctrl+E | Split selected clip at playhead |
+| F | Zoom to fit |
 | Ctrl+T / Ctrl+I | Add track / instrument track |
 | Ctrl+N / Ctrl+O | New / open project |
 | Ctrl+S / Ctrl+Shift+S | Save / save as |

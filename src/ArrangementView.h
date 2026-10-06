@@ -23,6 +23,8 @@ public:
     void addTrack();
     void addInstrumentTrack();
     void deleteSelectedClip();
+    void splitSelectedClipAtPlayhead();
+    void zoomToFit();
     bool hasSelectedClip() const;
 
     /** Called when a MIDI clip is double-clicked, or a new one is created. */
@@ -40,6 +42,7 @@ public:
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
     void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     bool keyPressed (const juce::KeyPress&) override;
@@ -52,7 +55,7 @@ public:
 private:
     te::Edit& edit;
 
-    static constexpr int rulerHeight = 24, headerWidth = 160, trackHeight = 70, edgeGrabWidth = 6;
+    static constexpr int rulerHeight = 24, headerWidth = 160, trackHeight = 70, edgeGrabWidth = 10;
     static constexpr double minClipLength = 0.01;
 
     double pixelsPerSecond = 40.0;
@@ -71,6 +74,8 @@ private:
     };
 
     DragState drag;
+    te::EditItemID hoverClipID;
+    DragMode hoverMode = DragMode::none;
     te::EditItemID selectedClipID, selectedTrackID;
     std::map<juce::String, std::unique_ptr<te::SmartThumbnail>> thumbnails;
 

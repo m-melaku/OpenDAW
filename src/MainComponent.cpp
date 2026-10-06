@@ -423,6 +423,8 @@ juce::PopupMenu MainComponent::getMenuForIndex (int menuIndex, const juce::Strin
         addItem ("Redo",          "Ctrl+Y", undoManager.canRedo(), [this] { redo(); });
         menu.addSeparator();
         addItem ("Delete Clip",   "Del",    arrangement->hasSelectedClip(), [this] { arrangement->deleteSelectedClip(); });
+        addItem ("Split Clip at Playhead", "Ctrl+E", arrangement->hasSelectedClip(), [this] { arrangement->splitSelectedClipAtPlayhead(); });
+        addItem ("Zoom to Fit",   "F",      true, [this] { arrangement->zoomToFit(); });
         addItem ("Add Track",     "Ctrl+T", true, [this] { arrangement->addTrack(); });
         addItem ("Add Instrument Track", "Ctrl+I", true, [this] { arrangement->addInstrumentTrack(); });
         menu.addSeparator();
