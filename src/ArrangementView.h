@@ -97,9 +97,6 @@ private:
     te::SmartThumbnail& getThumbnail (te::AudioClipBase&);
     te::AudioTrack& getTrackForDrop (int trackIndex);
     void selectTrack (te::Track*);
-    void ensureInstrument (te::AudioTrack&);
-    void setInstrument (te::AudioTrack&, te::Plugin::Ptr);
-    void addEffect (te::AudioTrack&, te::Plugin::Ptr);
     void showTrackMenu (te::AudioTrack&);
 
     void paintRuler (juce::Graphics&);

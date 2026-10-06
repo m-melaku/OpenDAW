@@ -52,6 +52,99 @@ namespace
         te::ExternalPlugin& plugin;
         std::unique_ptr<juce::AudioProcessorEditor> editor;
     };
+
+    //==============================================================================
+    /** A slider per parameter, for built-in plugins that have no editor of their own. */
+    struct GenericPluginEditor : public te::Plugin::EditorComponent,
+                                 private juce::Timer
+    {
+        explicit GenericPluginEditor (te::Plugin& p)
+        {
+            for (auto* param : p.getAutomatableParameters())
+            {
+                auto row = std::make_unique<Row> (*param);
+                content.addAndMakeVisible (*row);
+                rows.push_back (std::move (row));
+            }
+
+            viewport.setViewedComponent (&content, false);
+            viewport.setScrollBarsShown (true, false);
+            addAndMakeVisible (viewport);
+
+            const auto contentHeight = juce::jmax (rowHeight, (int) rows.size() * rowHeight);
+            content.setSize (width - viewport.getScrollBarThickness(), contentHeight);
+            setSize (width, juce::jmin (600, contentHeight + 8));
+
+            startTimerHz (10);
+        }
+
+        bool allowWindowResizing() override                                 { return false; }
+        juce::ComponentBoundsConstrainer* getBoundsConstrainer() override   { return nullptr; }
+
+        void resized() override
+        {
+            viewport.setBounds (getLocalBounds().reduced (0, 4));
+
+            auto area = content.getLocalBounds().reduced (8, 0);
+
+            for (auto& row : rows)
+                row->setBounds (area.removeFromTop (rowHeight));
+        }
+
+    private:
+        static constexpr int width = 460, rowHeight = 28;
+
+        struct Row : public juce::Component
+        {
+            explicit Row (te::AutomatableParameter& p)
+                : param (&p)
+            {
+                name.setText (p.getParameterName(), juce::dontSendNotification);
+                addAndMakeVisible (name);
+
+                slider.setSliderStyle (juce::Slider::LinearHorizontal);
+                slider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 90, 20);
+                slider.setRange (0.0, 1.0);
+                slider.setValue (p.getCurrentNormalisedValue(), juce::dontSendNotification);
+                slider.textFromValueFunction = [this] (double v)
+                {
+                    return param->valueToString (param->valueRange.convertFrom0to1 ((float) v)) + param->getLabel();
+                };
+                slider.onDragStart = [this] { param->getEdit().getUndoManager().beginNewTransaction(); };
+                slider.onValueChange = [this] { param->setNormalisedParameter ((float) slider.getValue(), juce::sendNotification); };
+                slider.updateText();
+                addAndMakeVisible (slider);
+            }
+
+            void resized() override
+            {
+                auto r = getLocalBounds();
+                name.setBounds (r.removeFromLeft (150));
+                slider.setBounds (r);
+            }
+
+            void refresh()
+            {
+                if (! slider.isMouseButtonDown())
+                    slider.setValue (param->getCurrentNormalisedValue(), juce::dontSendNotification);
+            }
+
+            te::AutomatableParameter::Ptr param;
+            juce::Label name;
+            juce::Slider slider;
+        };
+
+        void timerCallback() override
+        {
+            // Keep sliders in sync with undo/redo and automation
+            for (auto& row : rows)
+                row->refresh();
+        }
+
+        juce::Viewport viewport;
+        juce::Component content;
+        std::vector<std::unique_ptr<Row>> rows;
+    };
 }
 
 //==============================================================================
@@ -112,8 +205,10 @@ void PluginWindow::recreateEditor()
 
     if (auto* external = dynamic_cast<te::ExternalPlugin*> (&plugin))
         setEditor (std::make_unique<ExternalPluginEditor> (*external));
+    else if (auto builtInEditor = plugin.createEditor())
+        setEditor (std::move (builtInEditor));
     else
-        setEditor (plugin.createEditor());
+        setEditor (std::make_unique<GenericPluginEditor> (plugin));
 }
 
 void PluginWindow::recreateEditorAsync()

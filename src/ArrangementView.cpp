@@ -1,4 +1,5 @@
 #include "ArrangementView.h"
+#include "PluginMenus.h"
 
 namespace
 {
@@ -52,7 +53,7 @@ void ArrangementView::addInstrumentTrack()
 
     auto& track = *getTracks().getLast();
     track.setName ("Instrument " + juce::String (getTracks().size()));
-    ensureInstrument (track);
+    PluginMenus::ensureInstrument (track);
     selectTrack (&track);
     repaint();
 }
@@ -66,17 +67,6 @@ void ArrangementView::selectTrack (te::Track* track)
 
     if (onTrackSelected != nullptr)
         onTrackSelected (selectedTrackID);
-}
-
-void ArrangementView::ensureInstrument (te::AudioTrack& track)
-{
-    for (auto* plugin : track.pluginList.getPlugins())
-        if (plugin->isSynth())
-            return;
-
-    // Every MIDI track needs something to make sound, so default to the built-in 4OSC synth
-    if (auto synth = edit.getPluginCache().createNewPlugin (te::FourOscPlugin::xmlTypeName, {}))
-        track.pluginList.insertPlugin (synth, 0, nullptr);
 }
 
 void ArrangementView::deleteSelectedClip()
@@ -240,124 +230,33 @@ te::AudioTrack& ArrangementView::getTrackForDrop (int trackIndex)
 
 void ArrangementView::showTrackMenu (te::AudioTrack& track)
 {
-    // Menu actions run later, so they look the track up again by ID in case it's gone
-    auto onTrack = [this, trackID = track.itemID] (std::function<void (te::AudioTrack&)> action)
-    {
-        return [this, trackID, action]
-        {
-            if (auto* t = dynamic_cast<te::AudioTrack*> (te::findTrackForID (edit, trackID)))
-            {
-                edit.getUndoManager().beginNewTransaction();
-                action (*t);
-                repaint();
-            }
-        };
-    };
+    const auto trackID = track.itemID;
 
-    auto& cache = edit.getPluginCache();
-    const auto knownPlugins = edit.engine.getPluginManager().knownPluginList.getTypes();
-
-    // Instruments: built-in synth plus any scanned VST3 instruments
-    juce::PopupMenu instruments;
-    instruments.addItem ("4OSC (built-in synth)", onTrack ([this, &cache] (te::AudioTrack& t)
-    {
-        setInstrument (t, cache.createNewPlugin (te::FourOscPlugin::xmlTypeName, {}));
-    }));
-
-    instruments.addSeparator();
-
-    for (const auto& desc : knownPlugins)
-        if (desc.isInstrument)
-            instruments.addItem (desc.name + " (" + desc.manufacturerName + ")", onTrack ([this, &cache, desc] (te::AudioTrack& t)
-            {
-                setInstrument (t, cache.createNewPlugin (te::ExternalPlugin::xmlTypeName, desc));
-            }));
-
-    // Effects: built-ins plus any scanned VST3 effects
-    juce::PopupMenu effects;
-    const std::pair<const char*, const char*> builtInEffects[] = {
-        { "EQ",         te::EqualiserPlugin::xmlTypeName },
-        { "Compressor", te::CompressorPlugin::xmlTypeName },
-        { "Reverb",     te::ReverbPlugin::xmlTypeName },
-        { "Delay",      te::DelayPlugin::xmlTypeName },
-        { "Chorus",     te::ChorusPlugin::xmlTypeName },
-        { "Phaser",     te::PhaserPlugin::xmlTypeName },
-        { "Low Pass",   te::LowPassPlugin::xmlTypeName },
-    };
-
-    for (const auto& [name, type] : builtInEffects)
-        effects.addItem (juce::String (name) + " (built-in)", onTrack ([this, &cache, type] (te::AudioTrack& t)
-        {
-            addEffect (t, cache.createNewPlugin (type, {}));
-        }));
-
-    effects.addSeparator();
-
-    for (const auto& desc : knownPlugins)
-        if (! desc.isInstrument)
-            effects.addItem (desc.name + " (" + desc.manufacturerName + ")", onTrack ([this, &cache, desc] (te::AudioTrack& t)
-            {
-                addEffect (t, cache.createNewPlugin (te::ExternalPlugin::xmlTypeName, desc));
-            }));
-
-    // Plugins already on this track
     juce::PopupMenu onThisTrack;
 
-    for (auto* plugin : track.pluginList.getPlugins())
-    {
-        if (plugin == track.getVolumePlugin() || plugin == track.getLevelMeterPlugin())
-            continue;
-
-        juce::PopupMenu pluginMenu;
-        te::Plugin::Ptr pluginRef (plugin);
-
-        if (dynamic_cast<te::ExternalPlugin*> (plugin) != nullptr)
-            pluginMenu.addItem ("Open Editor", [pluginRef] { pluginRef->windowState->showWindowExplicitly(); });
-
-        pluginMenu.addItem ("Bypass", true, ! plugin->isEnabled(), [pluginRef] { pluginRef->setEnabled (! pluginRef->isEnabled()); });
-        pluginMenu.addItem ("Remove", onTrack ([pluginRef] (te::AudioTrack&) { pluginRef->deleteFromParent(); }));
-        onThisTrack.addSubMenu (plugin->getName(), pluginMenu);
-    }
+    for (auto* plugin : PluginMenus::getUserPlugins (track.pluginList))
+        onThisTrack.addSubMenu (plugin->getName(), PluginMenus::createPluginMenu (edit, *plugin));
 
     juce::PopupMenu menu;
-    menu.addSubMenu ("Instrument", instruments);
-    menu.addSubMenu ("Add Effect", effects);
+    menu.addSubMenu ("Instrument", PluginMenus::createInstrumentMenu (edit, trackID));
+    menu.addSubMenu ("Add Effect", PluginMenus::createEffectMenu (edit, trackID));
     menu.addSubMenu ("Plugins on this Track", onThisTrack, onThisTrack.getNumItems() > 0);
 
-    if (knownPlugins.isEmpty())
+    if (edit.engine.getPluginManager().knownPluginList.getNumTypes() == 0)
         menu.addItem ("(Use Plugins > Scan for Plugins to find your VST3s)", false, false, nullptr);
 
     menu.addSeparator();
-    menu.addItem ("Delete Track", onTrack ([this] (te::AudioTrack& t) { edit.deleteTrack (&t); }));
+    menu.addItem ("Delete Track", [this, trackID]
+    {
+        if (auto* t = te::findTrackForID (edit, trackID))
+        {
+            edit.getUndoManager().beginNewTransaction();
+            edit.deleteTrack (t);
+            repaint();
+        }
+    });
 
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition());
-}
-
-void ArrangementView::setInstrument (te::AudioTrack& track, te::Plugin::Ptr instrument)
-{
-    if (instrument == nullptr)
-        return;
-
-    for (auto* plugin : track.pluginList.getPlugins())
-        if (plugin->isSynth())
-            plugin->deleteFromParent();
-
-    track.pluginList.insertPlugin (instrument, 0, nullptr);
-
-    if (dynamic_cast<te::ExternalPlugin*> (instrument.get()) != nullptr)
-        instrument->windowState->showWindowExplicitly();
-}
-
-void ArrangementView::addEffect (te::AudioTrack& track, te::Plugin::Ptr effect)
-{
-    if (effect == nullptr)
-        return;
-
-    // Effects go before the track's volume fader so the fader stays last in the chain
-    track.pluginList.insertPlugin (effect, track.pluginList.indexOf (track.getVolumePlugin()), nullptr);
-
-    if (dynamic_cast<te::ExternalPlugin*> (effect.get()) != nullptr)
-        effect->windowState->showWindowExplicitly();
 }
 
 //==============================================================================
@@ -807,7 +706,7 @@ void ArrangementView::mouseDoubleClick (const juce::MouseEvent& e)
                                ts.toTime (te::BeatPosition::fromBeats (startBeat + beatsPerBar)));
 
     edit.getUndoManager().beginNewTransaction();
-    ensureInstrument (track);
+    PluginMenus::ensureInstrument (track);
     selectTrack (&track);
 
     if (auto clip = track.insertMIDIClip ("MIDI Clip", range, nullptr))

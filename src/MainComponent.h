@@ -3,6 +3,7 @@
 #include <JuceHeader.h>
 #include "ArrangementView.h"
 #include "PianoRoll.h"
+#include "MixerView.h"
 #include "PluginWindow.h"
 
 namespace te = tracktion;
@@ -36,12 +37,14 @@ private:
     std::unique_ptr<te::Edit> edit;
     std::unique_ptr<ArrangementView> arrangement;
     std::unique_ptr<PianoRoll> pianoRoll;
+    std::unique_ptr<MixerView> mixer;
     juce::File projectFile;     // Empty until the project is first saved
     std::unique_ptr<juce::FileChooser> fileChooser;
 
     juce::MenuBarComponent menuBar { this };
     juce::TextButton playButton { "Play" }, stopButton { "Stop" }, addTrackButton { "+ Track" },
-                     addInstrumentButton { "+ Instrument" }, settingsButton { "Audio Settings" },
+                     addInstrumentButton { "+ Instrument" }, mixerButton { "Mixer" },
+                     settingsButton { "Audio Settings" },
                      closeEditorButton { "Close" };
     juce::ToggleButton snapButton { "Snap" };
     juce::Slider tempoSlider { juce::Slider::IncDecButtons, juce::Slider::TextBoxLeft };
@@ -52,7 +55,9 @@ private:
 
     void setEdit (std::unique_ptr<te::Edit>);
     void openPianoRoll (te::EditItemID clipID);
-    void closePianoRoll();
+    void toggleMixer();
+    void closeBottomPanel();
+    void showBottomPanelHeader (const juce::String& title, bool showGrid);
     void newProject();
     void openProject();
     void loadProject (const juce::File&);
