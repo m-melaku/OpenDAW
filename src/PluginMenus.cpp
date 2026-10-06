@@ -161,7 +161,7 @@ void addEffect (te::PluginList& chain, te::Plugin::Ptr effect)
 
     for (int i = 0; i < plugins.size(); ++i)
     {
-        if (isFixedPlugin (plugins[i]))
+        if (isFixedPlugin (plugins[i].get()))
         {
             index = i;
             break;
