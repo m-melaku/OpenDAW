@@ -2,8 +2,11 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    branches: ["main", "milestone-*"]
   pull_request:
+
+permissions:
+  contents: write
 
 jobs:
   windows:
@@ -44,3 +47,19 @@ jobs:
         with:
           name: OpenDAW-windows
           path: build-ci/OpenDAW_artefacts/Release/OpenDAW.exe
+
+      # Direct pushes (not PR-verification builds) also update a "latest" Release, so there's
+      # one stable download link that always has the newest build - no need to hunt for a run.
+      - name: Publish to the "latest" release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: "Latest build (${{ github.ref_name }} @ ${{ github.sha }})"
+          body: |
+            Automatically updated on every push to `main` or a `milestone-*` branch.
+            Built from `${{ github.ref_name }}` at commit ${{ github.sha }}.
+
+            This is a development build, not a tagged release - it may be unstable.
+          prerelease: true
+          files: build-ci/OpenDAW_artefacts/Release/OpenDAW.exe

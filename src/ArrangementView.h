@@ -11,6 +11,8 @@ namespace te = tracktion;
     - Drop audio files onto a track to insert them at that time
     - Ctrl+wheel zooms, Shift+wheel scrolls horizontally, wheel scrolls tracks
     - Click or drag in the ruler to move the playhead
+    - Click a track's "A" button to show an automation lane: click to add a point,
+      drag to move it, right-click to delete it
 */
 class ArrangementView : public juce::Component,
                         public juce::FileDragAndDropTarget,
@@ -21,8 +23,18 @@ public:
     ~ArrangementView() override;
 
     void addTrack();
+    void addInstrumentTrack();
+    void addBusTrack();
     void deleteSelectedClip();
+    void splitSelectedClipAtPlayhead();
+    void zoomToFit();
     bool hasSelectedClip() const;
+
+    /** Called when a MIDI clip is double-clicked, or a new one is created. */
+    std::function<void (te::EditItemID)> onOpenMidiClip;
+
+    /** Called when the user selects a track (by clicking its header or one of its clips). */
+    std::function<void (te::EditItemID trackID)> onTrackSelected;
 
     void setSnapToGrid (bool shouldSnap)    { snapToGrid = shouldSnap; }
     bool isSnapToGrid() const               { return snapToGrid; }
@@ -33,6 +45,8 @@ public:
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     bool keyPressed (const juce::KeyPress&) override;
 
@@ -44,7 +58,8 @@ public:
 private:
     te::Edit& edit;
 
-    static constexpr int rulerHeight = 24, headerWidth = 160, trackHeight = 70, edgeGrabWidth = 6;
+    static constexpr int rulerHeight = 24, headerWidth = 160, trackHeight = 70, edgeGrabWidth = 10;
+    static constexpr int automationLaneHeight = 64, automationPointRadius = 5;
     static constexpr double minClipLength = 0.01;
 
     double pixelsPerSecond = 40.0;
@@ -63,8 +78,21 @@ private:
     };
 
     DragState drag;
-    te::EditItemID selectedClipID;
+    te::EditItemID hoverClipID;
+    DragMode hoverMode = DragMode::none;
+    te::EditItemID selectedClipID, selectedTrackID;
     std::map<juce::String, std::unique_ptr<te::SmartThumbnail>> thumbnails;
+
+    // Automation: at most one parameter lane is shown per track, keyed by track ID
+    std::map<te::EditItemID, te::AutomatableParameter::Ptr> automationLanes;
+
+    struct AutomationDragState
+    {
+        te::AutomatableParameter::Ptr param;
+        int pointIndex = -1;
+    };
+
+    AutomationDragState automationDrag;
 
     //==============================================================================
     juce::Array<te::AudioTrack*> getTracks() const     { return te::getAudioTracks (edit); }
@@ -73,6 +101,7 @@ private:
     double xToTime (double x) const;
     double snap (double seconds) const;
     int trackIndexAtY (int y) const;
+    int getRowHeight (int trackIndex) const;
     int getTrackY (int index) const;
     int getMaxScrollY() const;
 
@@ -80,15 +109,25 @@ private:
     te::Clip* findClipAt (juce::Point<float>, DragMode& modeOut) const;
     juce::Rectangle<int> getMuteButtonBounds (int trackIndex) const;
     juce::Rectangle<int> getSoloButtonBounds (int trackIndex) const;
+    juce::Rectangle<int> getAutomationButtonBounds (int trackIndex) const;
 
     te::SmartThumbnail& getThumbnail (te::AudioClipBase&);
     te::AudioTrack& getTrackForDrop (int trackIndex);
+    void selectTrack (te::Track*);
     void showTrackMenu (te::AudioTrack&);
+
+    // Automation lanes: one parameter curve shown per track, drawn/edited directly with the mouse
+    te::AutomatableParameter* getLaneParameter (te::AudioTrack&) const;
+    void showAutomationParameterMenu (te::AudioTrack&);
+    juce::Rectangle<int> getAutomationLaneBounds (int trackIndex) const;
+    juce::Point<float> getAutomationPointPos (te::AutomatableParameter&, int index, juce::Rectangle<int> laneBounds) const;
+    int findAutomationPointNear (te::AutomatableParameter&, juce::Point<float>, juce::Rectangle<int> laneBounds) const;
 
     void paintRuler (juce::Graphics&);
     void paintTrack (juce::Graphics&, te::AudioTrack&, int trackIndex);
     void paintClip (juce::Graphics&, te::Clip&, juce::Rectangle<float>);
     void paintHeader (juce::Graphics&, te::AudioTrack&, int trackIndex);
+    void paintAutomationLane (juce::Graphics&, te::AudioTrack&, int trackIndex);
 
     void timerCallback() override;
 

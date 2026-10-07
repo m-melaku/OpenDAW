@@ -28,7 +28,15 @@ target_sources(OpenDAW PRIVATE
     src/ArrangementView.h
     src/Main.cpp
     src/MainComponent.cpp
-    src/MainComponent.h)
+    src/MainComponent.h
+    src/MixerView.cpp
+    src/MixerView.h
+    src/PianoRoll.cpp
+    src/PianoRoll.h
+    src/PluginMenus.cpp
+    src/PluginMenus.h
+    src/PluginWindow.cpp
+    src/PluginWindow.h)
 
 target_compile_definitions(OpenDAW PRIVATE
     JUCE_APPLICATION_NAME_STRING="$<TARGET_PROPERTY:OpenDAW,JUCE_PRODUCT_NAME>"
