@@ -21,8 +21,17 @@ public:
     ~ArrangementView() override;
 
     void addTrack();
+    void addInstrumentTrack();
     void deleteSelectedClip();
+    void splitSelectedClipAtPlayhead();
+    void zoomToFit();
     bool hasSelectedClip() const;
+
+    /** Called when a MIDI clip is double-clicked, or a new one is created. */
+    std::function<void (te::EditItemID)> onOpenMidiClip;
+
+    /** Called when the user selects a track (by clicking its header or one of its clips). */
+    std::function<void (te::EditItemID trackID)> onTrackSelected;
 
     void setSnapToGrid (bool shouldSnap)    { snapToGrid = shouldSnap; }
     bool isSnapToGrid() const               { return snapToGrid; }
@@ -33,6 +42,8 @@ public:
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
     void mouseMove (const juce::MouseEvent&) override;
+    void mouseExit (const juce::MouseEvent&) override;
+    void mouseDoubleClick (const juce::MouseEvent&) override;
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
     bool keyPressed (const juce::KeyPress&) override;
 
@@ -44,7 +55,7 @@ public:
 private:
     te::Edit& edit;
 
-    static constexpr int rulerHeight = 24, headerWidth = 160, trackHeight = 70, edgeGrabWidth = 6;
+    static constexpr int rulerHeight = 24, headerWidth = 160, trackHeight = 70, edgeGrabWidth = 10;
     static constexpr double minClipLength = 0.01;
 
     double pixelsPerSecond = 40.0;
@@ -63,7 +74,9 @@ private:
     };
 
     DragState drag;
-    te::EditItemID selectedClipID;
+    te::EditItemID hoverClipID;
+    DragMode hoverMode = DragMode::none;
+    te::EditItemID selectedClipID, selectedTrackID;
     std::map<juce::String, std::unique_ptr<te::SmartThumbnail>> thumbnails;
 
     //==============================================================================
@@ -83,6 +96,10 @@ private:
 
     te::SmartThumbnail& getThumbnail (te::AudioClipBase&);
     te::AudioTrack& getTrackForDrop (int trackIndex);
+    void selectTrack (te::Track*);
+    void ensureInstrument (te::AudioTrack&);
+    void setInstrument (te::AudioTrack&, te::Plugin::Ptr);
+    void addEffect (te::AudioTrack&, te::Plugin::Ptr);
     void showTrackMenu (te::AudioTrack&);
 
     void paintRuler (juce::Graphics&);

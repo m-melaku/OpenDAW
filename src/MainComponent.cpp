@@ -27,7 +27,9 @@ MainComponent::MainComponent()
     playButton.onClick = [this] { togglePlay(); };
     stopButton.onClick = [this] { stop(); };
     addTrackButton.onClick = [this] { arrangement->addTrack(); };
+    addInstrumentButton.onClick = [this] { arrangement->addInstrumentTrack(); };
     settingsButton.onClick = [this] { showAudioSettings(); };
+    closeEditorButton.onClick = [this] { closePianoRoll(); };
     snapButton.onClick = [this] { arrangement->setSnapToGrid (snapButton.getToggleState()); };
     snapButton.setToggleState (true, juce::dontSendNotification);
 
@@ -38,14 +40,32 @@ MainComponent::MainComponent()
     positionLabel.setFont (juce::FontOptions (18.0f));
     positionLabel.setJustificationType (juce::Justification::centred);
 
+    // Piano roll grid sizes, as fractions of a whole note (item ID = denominator)
+    for (auto denominator : { 4, 8, 16, 32 })
+        gridBox.addItem ("Grid 1/" + juce::String (denominator), denominator);
+
+    gridBox.setSelectedId (16, juce::dontSendNotification);
+    gridBox.onChange = [this]
+    {
+        if (pianoRoll != nullptr)
+            pianoRoll->setGridSize (te::BeatDuration::fromBeats (4.0 / gridBox.getSelectedId()));
+    };
+
+    editorTitle.setFont (juce::FontOptions (14.0f, juce::Font::bold));
+
     for (auto* c : std::initializer_list<juce::Component*> { &menuBar, &playButton, &stopButton, &addTrackButton,
-                                                              &settingsButton, &snapButton, &tempoSlider,
-                                                              &tempoLabel, &positionLabel })
+                                                              &addInstrumentButton, &settingsButton, &snapButton,
+                                                              &tempoSlider, &tempoLabel, &positionLabel,
+                                                              &editorTitle, &gridBox, &closeEditorButton })
     {
         // Keep keyboard focus on the arrangement so shortcuts keep working after clicking buttons
         c->setWantsKeyboardFocus (false);
         addAndMakeVisible (c);
     }
+
+    // The editor header is only shown while the piano roll is open
+    for (auto* c : std::initializer_list<juce::Component*> { &editorTitle, &gridBox, &closeEditorButton })
+        c->setVisible (false);
 
     setWantsKeyboardFocus (true);
     setEdit (te::createEmptyEdit (engine, juce::File()));
@@ -56,6 +76,7 @@ MainComponent::MainComponent()
 MainComponent::~MainComponent()
 {
     menuBar.setModel (nullptr);
+    pianoRoll = nullptr;
     arrangement = nullptr;
     edit->getTransport().removeChangeListener (this);
 }
@@ -66,6 +87,7 @@ void MainComponent::setEdit (std::unique_ptr<te::Edit> newEdit)
     if (newEdit == nullptr)
         return;
 
+    closePianoRoll();
     arrangement = nullptr;
 
     if (edit != nullptr)
@@ -81,6 +103,8 @@ void MainComponent::setEdit (std::unique_ptr<te::Edit> newEdit)
 
     arrangement = std::make_unique<ArrangementView> (*edit);
     arrangement->setSnapToGrid (snapButton.getToggleState());
+    arrangement->onOpenMidiClip = [this] (te::EditItemID clipID) { openPianoRoll (clipID); };
+    arrangement->onTrackSelected = [this] (te::EditItemID trackID) { routeMidiInputTo (trackID); };
     addAndMakeVisible (*arrangement);
 
     tempoSlider.setValue (edit->tempoSequence.getTempo (0)->getBpm(), juce::dontSendNotification);
@@ -89,6 +113,39 @@ void MainComponent::setEdit (std::unique_ptr<te::Edit> newEdit)
     resized();
     updateWindowTitle();
     arrangement->grabKeyboardFocus();
+}
+
+void MainComponent::openPianoRoll (te::EditItemID clipID)
+{
+    auto* clip = te::findClipForID (*edit, clipID);
+
+    if (clip == nullptr)
+        return;
+
+    pianoRoll = std::make_unique<PianoRoll> (*edit, clipID);
+    pianoRoll->setGridSize (te::BeatDuration::fromBeats (4.0 / gridBox.getSelectedId()));
+    addAndMakeVisible (*pianoRoll);
+
+    editorTitle.setText ("Piano Roll: " + clip->getName(), juce::dontSendNotification);
+
+    for (auto* c : std::initializer_list<juce::Component*> { &editorTitle, &gridBox, &closeEditorButton })
+        c->setVisible (true);
+
+    resized();
+    pianoRoll->grabKeyboardFocus();
+}
+
+void MainComponent::closePianoRoll()
+{
+    pianoRoll = nullptr;
+
+    for (auto* c : std::initializer_list<juce::Component*> { &editorTitle, &gridBox, &closeEditorButton })
+        c->setVisible (false);
+
+    resized();
+
+    if (arrangement != nullptr)
+        arrangement->grabKeyboardFocus();
 }
 
 void MainComponent::newProject()
@@ -288,8 +345,22 @@ void MainComponent::resized()
     toolbar.removeFromLeft (16);
     snapButton.setBounds (toolbar.removeFromLeft (70));
     addTrackButton.setBounds (toolbar.removeFromLeft (80));
+    toolbar.removeFromLeft (6);
+    addInstrumentButton.setBounds (toolbar.removeFromLeft (100));
     settingsButton.setBounds (toolbar.removeFromRight (120));
     positionLabel.setBounds (toolbar);
+
+    if (pianoRoll != nullptr)
+    {
+        auto editorArea = area.removeFromBottom (juce::jmax (220, area.getHeight() * 45 / 100));
+        auto header = editorArea.removeFromTop (editorHeaderHeight).reduced (6, 3);
+
+        closeEditorButton.setBounds (header.removeFromRight (70));
+        header.removeFromRight (6);
+        gridBox.setBounds (header.removeFromRight (110));
+        editorTitle.setBounds (header);
+        pianoRoll->setBounds (editorArea);
+    }
 
     if (arrangement != nullptr)
         arrangement->setBounds (area);
@@ -307,6 +378,9 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
     if (isCommand (key, 'S'))                  { saveProject (false); return true; }
     if (isCommand (key, 'S', true))            { saveProject (true); return true; }
     if (isCommand (key, 'T'))                  { arrangement->addTrack(); return true; }
+    if (isCommand (key, 'I'))                  { arrangement->addInstrumentTrack(); return true; }
+    if (key == juce::KeyPress::escapeKey
+         && pianoRoll != nullptr)              { closePianoRoll(); return true; }
 
     return false;
 }
@@ -314,7 +388,7 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
 //==============================================================================
 juce::StringArray MainComponent::getMenuBarNames()
 {
-    return { "File", "Edit" };
+    return { "File", "Edit", "Plugins" };
 }
 
 juce::PopupMenu MainComponent::getMenuForIndex (int menuIndex, const juce::String&)
@@ -349,7 +423,10 @@ juce::PopupMenu MainComponent::getMenuForIndex (int menuIndex, const juce::Strin
         addItem ("Redo",          "Ctrl+Y", undoManager.canRedo(), [this] { redo(); });
         menu.addSeparator();
         addItem ("Delete Clip",   "Del",    arrangement->hasSelectedClip(), [this] { arrangement->deleteSelectedClip(); });
+        addItem ("Split Clip at Playhead", "Ctrl+E", arrangement->hasSelectedClip(), [this] { arrangement->splitSelectedClipAtPlayhead(); });
+        addItem ("Zoom to Fit",   "F",      true, [this] { arrangement->zoomToFit(); });
         addItem ("Add Track",     "Ctrl+T", true, [this] { arrangement->addTrack(); });
+        addItem ("Add Instrument Track", "Ctrl+I", true, [this] { arrangement->addInstrumentTrack(); });
         menu.addSeparator();
         menu.addItem ("Snap to Grid", true, snapButton.getToggleState(), [this]
         {
@@ -357,8 +434,66 @@ juce::PopupMenu MainComponent::getMenuForIndex (int menuIndex, const juce::Strin
             arrangement->setSnapToGrid (snapButton.getToggleState());
         });
     }
+    else if (menuIndex == 2)
+    {
+        const auto numPlugins = engine.getPluginManager().knownPluginList.getNumTypes();
+        addItem ("Scan for Plugins...", {}, true, [this] { showPluginScanner(); });
+        menu.addItem (juce::String (numPlugins) + " plugins found. Right-click a track name to add them",
+                      false, false, nullptr);
+    }
 
     return menu;
+}
+
+void MainComponent::routeMidiInputTo (te::EditItemID trackID)
+{
+    // Like Ableton/Studio One: MIDI keyboards play whichever track is selected
+    if (te::findTrackForID (*edit, trackID) == nullptr)
+        return;
+
+    for (auto& midiIn : engine.getDeviceManager().getMidiInDevices())
+    {
+        midiIn->setMonitorMode (te::InputDevice::MonitorMode::on);
+        midiIn->setEnabled (true);
+    }
+
+    // Input routing is stored in the Edit, but shouldn't count as an unsaved change
+    const auto hadChanges = edit->hasChangedSinceSaved();
+    edit->getTransport().ensureContextAllocated();
+
+    for (auto* instance : edit->getAllInputDevices())
+    {
+        if (instance->getInputDevice().getDeviceType() == te::InputDevice::physicalMidiDevice)
+        {
+            [[maybe_unused]] auto result = instance->setTarget (trackID, true, nullptr, 0);
+        }
+    }
+
+    edit->restartPlayback();
+
+    if (! hadChanges)
+        edit->resetChangedStatus();
+}
+
+void MainComponent::showPluginScanner()
+{
+    auto& pluginManager = engine.getPluginManager();
+
+    auto* scanner = new juce::PluginListComponent (pluginManager.pluginFormatManager,
+                                                   pluginManager.knownPluginList,
+                                                   engine.getTemporaryFileManager().getTempFile ("PluginScanDeadMansPedal"),
+                                                   std::addressof (engine.getPropertyStorage().getPropertiesFile()),
+                                                   true);
+    scanner->setSize (800, 600);
+
+    juce::DialogWindow::LaunchOptions o;
+    o.dialogTitle = "Plugins";
+    o.dialogBackgroundColour = getLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId);
+    o.escapeKeyTriggersCloseButton = true;
+    o.useNativeTitleBar = true;
+    o.resizable = true;
+    o.content.setOwned (scanner);
+    o.launchAsync();
 }
 
 //==============================================================================

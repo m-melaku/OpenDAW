@@ -2,6 +2,8 @@
 
 #include <JuceHeader.h>
 #include "ArrangementView.h"
+#include "PianoRoll.h"
+#include "PluginWindow.h"
 
 namespace te = tracktion;
 
@@ -30,22 +32,27 @@ public:
 
 private:
     // The Engine must outlive the Edit, and the Edit must outlive the ArrangementView
-    te::Engine engine { ProjectInfo::projectName };
+    te::Engine engine { ProjectInfo::projectName, std::make_unique<OpenDAWUIBehaviour>(), nullptr };
     std::unique_ptr<te::Edit> edit;
     std::unique_ptr<ArrangementView> arrangement;
+    std::unique_ptr<PianoRoll> pianoRoll;
     juce::File projectFile;     // Empty until the project is first saved
     std::unique_ptr<juce::FileChooser> fileChooser;
 
     juce::MenuBarComponent menuBar { this };
     juce::TextButton playButton { "Play" }, stopButton { "Stop" }, addTrackButton { "+ Track" },
-                     settingsButton { "Audio Settings" };
+                     addInstrumentButton { "+ Instrument" }, settingsButton { "Audio Settings" },
+                     closeEditorButton { "Close" };
     juce::ToggleButton snapButton { "Snap" };
     juce::Slider tempoSlider { juce::Slider::IncDecButtons, juce::Slider::TextBoxLeft };
-    juce::Label tempoLabel { {}, "BPM" }, positionLabel;
+    juce::Label tempoLabel { {}, "BPM" }, positionLabel, editorTitle;
+    juce::ComboBox gridBox;
 
-    static constexpr int menuBarHeight = 24, toolbarHeight = 40;
+    static constexpr int menuBarHeight = 24, toolbarHeight = 40, editorHeaderHeight = 30;
 
     void setEdit (std::unique_ptr<te::Edit>);
+    void openPianoRoll (te::EditItemID clipID);
+    void closePianoRoll();
     void newProject();
     void openProject();
     void loadProject (const juce::File&);
@@ -57,6 +64,8 @@ private:
     void togglePlay();
     void stop();
     void showAudioSettings();
+    void showPluginScanner();
+    void routeMidiInputTo (te::EditItemID trackID);
     void updateWindowTitle();
 
     static juce::File getDefaultProjectFolder();
