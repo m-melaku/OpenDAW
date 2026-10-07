@@ -1,4 +1,5 @@
 #include "MainComponent.h"
+#include "PluginMenus.h"
 
 namespace
 {
@@ -29,7 +30,9 @@ MainComponent::MainComponent()
     addTrackButton.onClick = [this] { arrangement->addTrack(); };
     addInstrumentButton.onClick = [this] { arrangement->addInstrumentTrack(); };
     settingsButton.onClick = [this] { showAudioSettings(); };
-    closeEditorButton.onClick = [this] { closePianoRoll(); };
+    closeEditorButton.onClick = [this] { closeBottomPanel(); };
+    mixerButton.onClick = [this] { toggleMixer(); };
+    mixerButton.setTooltip ("Show/hide the mixer (Ctrl+M)");
     snapButton.onClick = [this] { arrangement->setSnapToGrid (snapButton.getToggleState()); };
     snapButton.setToggleState (true, juce::dontSendNotification);
 
@@ -54,7 +57,7 @@ MainComponent::MainComponent()
     editorTitle.setFont (juce::FontOptions (14.0f, juce::Font::bold));
 
     for (auto* c : std::initializer_list<juce::Component*> { &menuBar, &playButton, &stopButton, &addTrackButton,
-                                                              &addInstrumentButton, &settingsButton, &snapButton,
+                                                              &addInstrumentButton, &mixerButton, &settingsButton, &snapButton,
                                                               &tempoSlider, &tempoLabel, &positionLabel,
                                                               &editorTitle, &gridBox, &closeEditorButton })
     {
@@ -77,6 +80,7 @@ MainComponent::~MainComponent()
 {
     menuBar.setModel (nullptr);
     pianoRoll = nullptr;
+    mixer = nullptr;
     arrangement = nullptr;
     edit->getTransport().removeChangeListener (this);
 }
@@ -87,7 +91,7 @@ void MainComponent::setEdit (std::unique_ptr<te::Edit> newEdit)
     if (newEdit == nullptr)
         return;
 
-    closePianoRoll();
+    closeBottomPanel();
     arrangement = nullptr;
 
     if (edit != nullptr)
@@ -98,6 +102,7 @@ void MainComponent::setEdit (std::unique_ptr<te::Edit> newEdit)
 
     edit = std::move (newEdit);
     edit->getTransport().addChangeListener (this);
+    PluginMenus::ensureMasterMeter (*edit);     // Before the reset below, so it doesn't count as a change
     edit->getUndoManager().clearUndoHistory();
     edit->resetChangedStatus();
 
@@ -122,26 +127,50 @@ void MainComponent::openPianoRoll (te::EditItemID clipID)
     if (clip == nullptr)
         return;
 
+    // The piano roll and mixer share the bottom panel
+    mixer = nullptr;
     pianoRoll = std::make_unique<PianoRoll> (*edit, clipID);
     pianoRoll->setGridSize (te::BeatDuration::fromBeats (4.0 / gridBox.getSelectedId()));
     addAndMakeVisible (*pianoRoll);
 
-    editorTitle.setText ("Piano Roll: " + clip->getName(), juce::dontSendNotification);
-
-    for (auto* c : std::initializer_list<juce::Component*> { &editorTitle, &gridBox, &closeEditorButton })
-        c->setVisible (true);
-
-    resized();
+    showBottomPanelHeader ("Piano Roll: " + clip->getName(), true);
     pianoRoll->grabKeyboardFocus();
 }
 
-void MainComponent::closePianoRoll()
+void MainComponent::toggleMixer()
+{
+    if (mixer != nullptr)
+    {
+        closeBottomPanel();
+        return;
+    }
+
+    pianoRoll = nullptr;
+    mixer = std::make_unique<MixerView> (*edit);
+    addAndMakeVisible (*mixer);
+
+    showBottomPanelHeader ("Mixer", false);
+}
+
+void MainComponent::showBottomPanelHeader (const juce::String& title, bool showGrid)
+{
+    editorTitle.setText (title, juce::dontSendNotification);
+    editorTitle.setVisible (true);
+    gridBox.setVisible (showGrid);
+    closeEditorButton.setVisible (true);
+    mixerButton.setToggleState (mixer != nullptr, juce::dontSendNotification);
+    resized();
+}
+
+void MainComponent::closeBottomPanel()
 {
     pianoRoll = nullptr;
+    mixer = nullptr;
 
     for (auto* c : std::initializer_list<juce::Component*> { &editorTitle, &gridBox, &closeEditorButton })
         c->setVisible (false);
 
+    mixerButton.setToggleState (false, juce::dontSendNotification);
     resized();
 
     if (arrangement != nullptr)
@@ -347,19 +376,25 @@ void MainComponent::resized()
     addTrackButton.setBounds (toolbar.removeFromLeft (80));
     toolbar.removeFromLeft (6);
     addInstrumentButton.setBounds (toolbar.removeFromLeft (100));
+    toolbar.removeFromLeft (6);
+    mixerButton.setBounds (toolbar.removeFromLeft (70));
     settingsButton.setBounds (toolbar.removeFromRight (120));
     positionLabel.setBounds (toolbar);
 
-    if (pianoRoll != nullptr)
+    juce::Component* bottomPanel = pianoRoll != nullptr ? static_cast<juce::Component*> (pianoRoll.get()) : mixer.get();
+
+    if (bottomPanel != nullptr)
     {
-        auto editorArea = area.removeFromBottom (juce::jmax (220, area.getHeight() * 45 / 100));
+        // The mixer needs room for its faders; the piano roll takes a bit under half
+        const auto minHeight = mixer != nullptr ? 340 : 220;
+        auto editorArea = area.removeFromBottom (juce::jmin (area.getHeight() - 80, juce::jmax (minHeight, area.getHeight() * 45 / 100)));
         auto header = editorArea.removeFromTop (editorHeaderHeight).reduced (6, 3);
 
         closeEditorButton.setBounds (header.removeFromRight (70));
         header.removeFromRight (6);
         gridBox.setBounds (header.removeFromRight (110));
         editorTitle.setBounds (header);
-        pianoRoll->setBounds (editorArea);
+        bottomPanel->setBounds (editorArea);
     }
 
     if (arrangement != nullptr)
@@ -379,8 +414,11 @@ bool MainComponent::keyPressed (const juce::KeyPress& key)
     if (isCommand (key, 'S', true))            { saveProject (true); return true; }
     if (isCommand (key, 'T'))                  { arrangement->addTrack(); return true; }
     if (isCommand (key, 'I'))                  { arrangement->addInstrumentTrack(); return true; }
+    if (isCommand (key, 'B'))                  { arrangement->addBusTrack(); return true; }
+    if (isCommand (key, 'M'))                  { toggleMixer(); return true; }
     if (key == juce::KeyPress::escapeKey
-         && pianoRoll != nullptr)              { closePianoRoll(); return true; }
+         && (pianoRoll != nullptr
+              || mixer != nullptr))            { closeBottomPanel(); return true; }
 
     return false;
 }
@@ -425,8 +463,10 @@ juce::PopupMenu MainComponent::getMenuForIndex (int menuIndex, const juce::Strin
         addItem ("Delete Clip",   "Del",    arrangement->hasSelectedClip(), [this] { arrangement->deleteSelectedClip(); });
         addItem ("Split Clip at Playhead", "Ctrl+E", arrangement->hasSelectedClip(), [this] { arrangement->splitSelectedClipAtPlayhead(); });
         addItem ("Zoom to Fit",   "F",      true, [this] { arrangement->zoomToFit(); });
+        addItem ("Show Mixer",    "Ctrl+M", true, [this] { toggleMixer(); });
         addItem ("Add Track",     "Ctrl+T", true, [this] { arrangement->addTrack(); });
         addItem ("Add Instrument Track", "Ctrl+I", true, [this] { arrangement->addInstrumentTrack(); });
+        addItem ("Add Bus Track", "Ctrl+B", true, [this] { arrangement->addBusTrack(); });
         menu.addSeparator();
         menu.addItem ("Snap to Grid", true, snapButton.getToggleState(), [this]
         {

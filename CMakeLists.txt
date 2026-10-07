@@ -29,8 +29,12 @@ target_sources(OpenDAW PRIVATE
     src/Main.cpp
     src/MainComponent.cpp
     src/MainComponent.h
+    src/MixerView.cpp
+    src/MixerView.h
     src/PianoRoll.cpp
     src/PianoRoll.h
+    src/PluginMenus.cpp
+    src/PluginMenus.h
     src/PluginWindow.cpp
     src/PluginWindow.h)
 
