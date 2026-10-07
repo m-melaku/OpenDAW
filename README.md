@@ -7,7 +7,7 @@ A free, open-source digital audio workstation for Windows, built on
 an FL Studio-grade piano roll and step sequencer, an Ableton-style clip launcher, and Pro Tools-level
 recording and mixing.
 
-> Status: early development (Milestone 2).
+> Status: early development (Milestone 3 complete).
 
 ## Downloading
 
@@ -48,6 +48,17 @@ pick a run → **OpenDAW-windows** under *Artifacts*, if you need a specific pas
 - **M** / **S** buttons mute and solo the track
 - Find your VST3s with **Plugins → Scan for Plugins** (only needed once)
 
+**Mixing** (`Mixer` button or Ctrl+M)
+- One strip per track plus Master: plugin slots, `+ FX`, pan, fader, meter, mute/solo
+- Click a plugin slot to open its editor (built-in effects get a slider for each setting); right-click to bypass or remove
+- **Buses**: Edit → Add Bus Track (Ctrl+B), then `+ Send` on a strip (or *Send to* in the track menu) and turn up the send knob
+
+**Automation**
+- Click a track's **A** button and pick a parameter (Volume, Pan, or any plugin setting) to open its automation lane
+- Click in the lane to add a point, drag a point to move it, right-click a point to delete it (or *Clear All Automation*)
+- **Record it live**: turn on **Write Auto**, press play, and move a fader, knob or plugin slider; release to stop writing
+- Parameters with automation show a `*` in the A menu
+
 **Navigation**
 
 | Action | Mouse / Key |
@@ -66,7 +77,8 @@ pick a run → **OpenDAW-windows** under *Artifacts*, if you need a specific pas
 | Delete | Delete selected clip or note |
 | Ctrl+E | Split selected clip at playhead |
 | F | Zoom to fit |
-| Ctrl+T / Ctrl+I | Add track / instrument track |
+| Ctrl+T / Ctrl+I / Ctrl+B | Add track / instrument track / bus track |
+| Ctrl+M | Show / hide the mixer |
 | Ctrl+N / Ctrl+O | New / open project |
 | Ctrl+S / Ctrl+Shift+S | Save / save as |
 
@@ -94,7 +106,7 @@ You can also open the `.sln`/`.slnx` file in `build/` in Visual Studio to build 
 - [x] **M0: Playable core.** Transport, tempo, and drag-and-drop audio files onto tracks
 - [x] **M1: Arrangement.** Move and trim clips, multiple tracks, undo/redo, save and load projects
 - [x] **M2: MIDI.** MIDI tracks, piano roll, VST3 instruments and effects, MIDI keyboard input
-- [ ] **M3: Mixing.** Mixer view, sends and buses, automation, built-in EQ, compressor and reverb
+- [x] **M3: Mixing.** Mixer view, sends and buses, automation, built-in EQ, compressor and reverb
 - [ ] **M4: Beat making.** Step sequencer and pattern workflow
 - [ ] **M5: Performance.** Clip launcher
 - [ ] **M6: Recording.** Multitrack recording, comping, and punch in/out

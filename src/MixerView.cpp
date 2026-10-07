@@ -17,6 +17,35 @@ namespace
     }
 
     constexpr float minDb = -60.0f, maxDb = 6.0f;
+
+    /** Brackets a slider drag with an automation gesture on the parameter it controls, so that
+        with automation writing on, moving the control during playback records a curve.
+        Each drag is also one undo step.
+    */
+    void attachGesture (juce::Slider& slider, te::Edit& edit, std::function<te::AutomatableParameter*()> getParameter)
+    {
+        auto active = std::make_shared<te::AutomatableParameter::Ptr>();
+
+        slider.onDragStart = [&edit, getParameter, active]
+        {
+            edit.getUndoManager().beginNewTransaction();
+
+            if (auto* param = getParameter())
+            {
+                *active = param;
+                param->parameterChangeGestureBegin();
+            }
+        };
+
+        slider.onDragEnd = [active]
+        {
+            if (*active != nullptr)
+            {
+                (*active)->parameterChangeGestureEnd();
+                *active = nullptr;
+            }
+        };
+    }
 }
 
 //==============================================================================
@@ -97,7 +126,11 @@ ChannelStrip::SendControl::SendControl (te::Edit& e, te::AuxSendPlugin& s)
     knob.setDoubleClickReturnValue (true, 0.0);
     knob.setTextValueSuffix (" dB");
     knob.setWantsKeyboardFocus (false);
-    knob.onDragStart = [this] { edit.getUndoManager().beginNewTransaction(); };
+    attachGesture (knob, edit, [this]() -> te::AutomatableParameter*
+    {
+        auto* s = dynamic_cast<te::AuxSendPlugin*> (send.get());
+        return s != nullptr ? s->gain.get() : nullptr;
+    });
     knob.onValueChange = [this]
     {
         if (auto* s = dynamic_cast<te::AuxSendPlugin*> (send.get()))
@@ -174,7 +207,11 @@ ChannelStrip::ChannelStrip (te::Edit& e, te::EditItemID id)
     panKnob.setRange (-1.0, 1.0);
     panKnob.setDoubleClickReturnValue (true, 0.0);
     panKnob.setTooltip ("Pan (double-click to centre)");
-    panKnob.onDragStart = [this] { edit.getUndoManager().beginNewTransaction(); };
+    attachGesture (panKnob, edit, [this]() -> te::AutomatableParameter*
+    {
+        auto* vol = getVolumePlugin();
+        return vol != nullptr ? vol->panParam.get() : nullptr;
+    });
     panKnob.onValueChange = [this]
     {
         if (auto* vol = getVolumePlugin())
@@ -187,7 +224,11 @@ ChannelStrip::ChannelStrip (te::Edit& e, te::EditItemID id)
     fader.setDoubleClickReturnValue (true, 0.0);
     fader.setTextValueSuffix (" dB");
     fader.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 70, 18);
-    fader.onDragStart = [this] { edit.getUndoManager().beginNewTransaction(); };
+    attachGesture (fader, edit, [this]() -> te::AutomatableParameter*
+    {
+        auto* vol = getVolumePlugin();
+        return vol != nullptr ? vol->volParam.get() : nullptr;
+    });
     fader.onValueChange = [this]
     {
         if (auto* vol = getVolumePlugin())

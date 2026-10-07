@@ -19,6 +19,8 @@ namespace
         const juce::Colour playhead     { 0xffff5c5c };
         const juce::Colour mute         { 0xffe0b23a };
         const juce::Colour solo         { 0xff4fc3a1 };
+        const juce::Colour automation   { 0xffe08a3a };
+        const juce::Colour laneBack     { 0xff212226 };
     }
 
     te::TimePosition seconds (double s)     { return te::TimePosition::fromSeconds (s); }
@@ -144,19 +146,48 @@ double ArrangementView::snap (double s) const
     return ts.toTime (te::BeatPosition::fromBeats (beat)).inSeconds();
 }
 
+int ArrangementView::getRowHeight (int trackIndex) const
+{
+    // A track's row is its clip area plus, if shown, its automation lane
+    const auto tracks = getTracks();
+
+    if (juce::isPositiveAndBelow (trackIndex, tracks.size()) && getLaneParameter (*tracks[trackIndex]) != nullptr)
+        return trackHeight + automationLaneHeight;
+
+    return trackHeight;
+}
+
 int ArrangementView::trackIndexAtY (int y) const
 {
-    return (int) std::floor ((y - rulerHeight + scrollY) / (double) trackHeight);
+    // Rows can differ in height, so walk down them. Returns the track count for y below the last row.
+    const auto numTracks = getTracks().size();
+    auto rowTop = rulerHeight - scrollY;
+
+    for (int i = 0; i < numTracks; ++i)
+    {
+        rowTop += getRowHeight (i);
+
+        if (y < rowTop)
+            return i;
+    }
+
+    return numTracks;
 }
 
 int ArrangementView::getTrackY (int index) const
 {
-    return rulerHeight + index * trackHeight - scrollY;
+    auto y = rulerHeight - scrollY;
+
+    for (int i = 0; i < index; ++i)
+        y += getRowHeight (i);
+
+    return y;
 }
 
 int ArrangementView::getMaxScrollY() const
 {
-    return juce::jmax (0, (getTracks().size() + 1) * trackHeight - (getHeight() - rulerHeight));
+    // One spare row of padding below the last track, as before
+    return juce::jmax (0, getTrackY (getTracks().size()) + scrollY + trackHeight - getHeight());
 }
 
 juce::Rectangle<float> ArrangementView::getClipBounds (te::Clip& clip, int trackIndex) const
@@ -211,6 +242,97 @@ juce::Rectangle<int> ArrangementView::getMuteButtonBounds (int trackIndex) const
 juce::Rectangle<int> ArrangementView::getSoloButtonBounds (int trackIndex) const
 {
     return getMuteButtonBounds (trackIndex).translated (24, 0);
+}
+
+juce::Rectangle<int> ArrangementView::getAutomationButtonBounds (int trackIndex) const
+{
+    return getMuteButtonBounds (trackIndex).translated (-24, 0);
+}
+
+//==============================================================================
+te::AutomatableParameter* ArrangementView::getLaneParameter (te::AudioTrack& track) const
+{
+    const auto it = automationLanes.find (track.itemID);
+    return it != automationLanes.end() ? it->second.get() : nullptr;
+}
+
+juce::Rectangle<int> ArrangementView::getAutomationLaneBounds (int trackIndex) const
+{
+    return { 0, getTrackY (trackIndex) + trackHeight, getWidth(), automationLaneHeight };
+}
+
+juce::Point<float> ArrangementView::getAutomationPointPos (te::AutomatableParameter& param, int index,
+                                                         juce::Rectangle<int> laneBounds) const
+{
+    auto& curve = param.getCurve();
+    const auto area = laneBounds.withTrimmedLeft (headerWidth).reduced (0, 6).toFloat();
+    const auto time = te::toTime (curve.getPointPosition (index), edit.tempoSequence).inSeconds();
+    const auto normalised = param.valueRange.convertTo0to1 (curve.getPointValue (index));
+
+    return { (float) timeToX (time), area.getBottom() - normalised * area.getHeight() };
+}
+
+int ArrangementView::findAutomationPointNear (te::AutomatableParameter& param, juce::Point<float> pos,
+                                              juce::Rectangle<int> laneBounds) const
+{
+    const auto grabDistance = (float) automationPointRadius + 3.0f;
+
+    for (int i = param.getCurve().getNumPoints(); --i >= 0;)
+        if (getAutomationPointPos (param, i, laneBounds).getDistanceFrom (pos) <= grabDistance)
+            return i;
+
+    return -1;
+}
+
+void ArrangementView::showAutomationParameterMenu (te::AudioTrack& track)
+{
+    const auto trackID = track.itemID;
+    juce::PopupMenu menu;
+
+    auto addParameter = [this, trackID] (juce::PopupMenu& m, te::AutomatableParameter::Ptr param)
+    {
+        if (param == nullptr)
+            return;
+
+        const auto isShown = automationLanes.count (trackID) > 0 && automationLanes[trackID] == param;
+        const auto label = param->getParameterName() + (param->hasAutomationPoints() ? "  *" : "");
+
+        m.addItem (label, true, isShown, [this, trackID, param]
+        {
+            automationLanes[trackID] = param;
+            repaint();
+        });
+    };
+
+    // Volume and pan first, then every parameter of each plugin on the track
+    if (auto* volume = track.getVolumePlugin())
+    {
+        addParameter (menu, volume->volParam);
+        addParameter (menu, volume->panParam);
+    }
+
+    for (auto* plugin : PluginMenus::getUserPlugins (track.pluginList))
+    {
+        juce::PopupMenu pluginParams;
+
+        for (int i = 0; i < plugin->getNumAutomatableParameters(); ++i)
+            addParameter (pluginParams, plugin->getAutomatableParameter (i));
+
+        if (pluginParams.getNumItems() > 0)
+            menu.addSubMenu (plugin->getName(), pluginParams);
+    }
+
+    if (automationLanes.count (trackID) > 0)
+    {
+        menu.addSeparator();
+        menu.addItem ("Hide Automation Lane", [this, trackID]
+        {
+            automationLanes.erase (trackID);
+            repaint();
+        });
+    }
+
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition());
 }
 
 te::SmartThumbnail& ArrangementView::getThumbnail (te::AudioClipBase& clip)
@@ -278,7 +400,10 @@ void ArrangementView::paint (juce::Graphics& g)
     const auto tracks = getTracks();
 
     for (int i = 0; i < tracks.size(); ++i)
+    {
         paintTrack (g, *tracks[i], i);
+        paintAutomationLane (g, *tracks[i], i);
+    }
 
     paintRuler (g);
 
@@ -363,11 +488,11 @@ void ArrangementView::paintTrack (juce::Graphics& g, te::AudioTrack& track, int 
 {
     const auto y = getTrackY (trackIndex);
 
-    if (y + trackHeight < rulerHeight || y > getHeight())
+    if (y + getRowHeight (trackIndex) < rulerHeight || y > getHeight())
         return;
 
     g.setColour (Palette::separator);
-    g.drawHorizontalLine (y + trackHeight - 1, (float) headerWidth, (float) getWidth());
+    g.drawHorizontalLine (y + getRowHeight (trackIndex) - 1, (float) headerWidth, (float) getWidth());
 
     juce::Graphics::ScopedSaveState saveState (g);
     g.reduceClipRegion (getLocalBounds().withTrimmedLeft (headerWidth).withTrimmedTop (rulerHeight));
@@ -520,6 +645,101 @@ void ArrangementView::paintHeader (juce::Graphics& g, te::AudioTrack& track, int
 
     drawToggle (getMuteButtonBounds (trackIndex), "M", track.isMuted (false), Palette::mute);
     drawToggle (getSoloButtonBounds (trackIndex), "S", track.isSolo (false), Palette::solo);
+    drawToggle (getAutomationButtonBounds (trackIndex), "A", getLaneParameter (track) != nullptr, Palette::automation);
+}
+
+void ArrangementView::paintAutomationLane (juce::Graphics& g, te::AudioTrack& track, int trackIndex)
+{
+    auto* param = getLaneParameter (track);
+
+    if (param == nullptr)
+        return;
+
+    const auto lane = getAutomationLaneBounds (trackIndex);
+
+    if (lane.getBottom() < rulerHeight || lane.getY() > getHeight())
+        return;
+
+    juce::Graphics::ScopedSaveState saveState (g);
+    g.reduceClipRegion (getLocalBounds().withTrimmedTop (rulerHeight));
+
+    // Left: which parameter this lane shows
+    const auto labelArea = lane.withWidth (headerWidth);
+    g.setColour (Palette::header.darker (0.2f));
+    g.fillRect (labelArea);
+    g.setColour (Palette::automation);
+    g.fillRect (labelArea.withWidth (3));
+
+    g.setColour (juce::Colours::white.withAlpha (0.85f));
+    g.setFont (12.0f);
+    g.drawText (param->getParameterName(), labelArea.reduced (10, 6).withHeight (16), juce::Justification::centredLeft);
+
+    g.setColour (juce::Colours::white.withAlpha (0.5f));
+    g.setFont (11.0f);
+    g.drawText (param->getCurrentValueAsStringWithLabel(), labelArea.reduced (10, 6).withTrimmedTop (18).withHeight (14),
+                juce::Justification::centredLeft);
+
+    if (auto* plugin = param->getPlugin(); plugin != nullptr && plugin != track.getVolumePlugin())
+        g.drawText (plugin->getName(), labelArea.reduced (10, 6).withTrimmedTop (34).withHeight (14),
+                    juce::Justification::centredLeft);
+
+    // Right: the curve, on the same timeline as the clips above it
+    const auto curveArea = lane.withTrimmedLeft (headerWidth);
+    g.setColour (Palette::laneBack);
+    g.fillRect (curveArea);
+    g.setColour (Palette::separator);
+    g.drawHorizontalLine (lane.getBottom() - 1, 0.0f, (float) getWidth());
+
+    g.reduceClipRegion (curveArea);
+
+    auto& curve = param->getCurve();
+    const auto numPoints = curve.getNumPoints();
+    const auto valueArea = curveArea.reduced (0, 6).toFloat();
+    auto valueToY = [&] (float value)
+    {
+        return valueArea.getBottom() - param->valueRange.convertTo0to1 (value) * valueArea.getHeight();
+    };
+
+    juce::Path line;
+
+    if (numPoints == 0)
+    {
+        // No automation yet: the parameter just sits at its current value
+        const auto y = valueToY (param->getCurrentBaseValue());
+        line.startNewSubPath ((float) curveArea.getX(), y);
+        line.lineTo ((float) curveArea.getRight(), y);
+
+        g.setColour (Palette::automation.withAlpha (0.35f));
+        g.strokePath (line, juce::PathStrokeType (1.5f));
+
+        g.setColour (juce::Colours::white.withAlpha (0.3f));
+        g.drawText ("Click to add automation points", curveArea.reduced (8, 0), juce::Justification::centredLeft);
+        return;
+    }
+
+    // Flat before the first point and after the last, straight lines between points
+    const auto first = getAutomationPointPos (*param, 0, lane);
+    line.startNewSubPath ((float) curveArea.getX(), first.y);
+
+    for (int i = 0; i < numPoints; ++i)
+        line.lineTo (getAutomationPointPos (*param, i, lane));
+
+    line.lineTo ((float) curveArea.getRight(), getAutomationPointPos (*param, numPoints - 1, lane).y);
+
+    g.setColour (Palette::automation);
+    g.strokePath (line, juce::PathStrokeType (2.0f));
+
+    for (int i = 0; i < numPoints; ++i)
+    {
+        const auto p = getAutomationPointPos (*param, i, lane);
+        const auto isDragging = automationDrag.param.get() == param && automationDrag.pointIndex == i;
+        const auto r = (float) automationPointRadius;
+
+        g.setColour (isDragging ? juce::Colours::white : Palette::automation);
+        g.fillEllipse (p.x - r, p.y - r, r * 2.0f, r * 2.0f);
+        g.setColour (juce::Colours::black.withAlpha (0.6f));
+        g.drawEllipse (p.x - r, p.y - r, r * 2.0f, r * 2.0f, 1.0f);
+    }
 }
 
 //==============================================================================
@@ -527,6 +747,7 @@ void ArrangementView::mouseDown (const juce::MouseEvent& e)
 {
     grabKeyboardFocus();
     drag = {};
+    automationDrag = {};
 
     const auto pos = e.position;
     const auto tracks = getTracks();
@@ -558,6 +779,10 @@ void ArrangementView::mouseDown (const juce::MouseEvent& e)
         {
             showTrackMenu (track);
         }
+        else if (getAutomationButtonBounds (index).contains (pos.toInt()))
+        {
+            showAutomationParameterMenu (track);
+        }
         else if (getMuteButtonBounds (index).contains (pos.toInt()))
         {
             edit.getUndoManager().beginNewTransaction();
@@ -571,6 +796,67 @@ void ArrangementView::mouseDown (const juce::MouseEvent& e)
 
         repaint();
         return;
+    }
+
+    // Automation lanes: add, drag or delete points
+    {
+        const auto index = trackIndexAtY ((int) pos.y);
+
+        if (juce::isPositiveAndBelow (index, tracks.size()))
+        {
+            const auto lane = getAutomationLaneBounds (index);
+
+            if (auto* param = getLaneParameter (*tracks[index]); param != nullptr && lane.contains (pos.toInt()))
+            {
+                auto& curve = param->getCurve();
+                auto& um = edit.getUndoManager();
+                const auto pointIndex = findAutomationPointNear (*param, pos, lane);
+
+                if (e.mods.isPopupMenu())
+                {
+                    juce::PopupMenu menu;
+                    te::AutomatableParameter::Ptr ref (param);
+
+                    if (pointIndex >= 0)
+                        menu.addItem ("Delete Point", [this, ref, pointIndex]
+                        {
+                            edit.getUndoManager().beginNewTransaction();
+                            ref->getCurve().removePoint (pointIndex, &edit.getUndoManager());
+                            repaint();
+                        });
+
+                    menu.addItem ("Clear All Automation", curve.getNumPoints() > 0, false, [this, ref]
+                    {
+                        edit.getUndoManager().beginNewTransaction();
+                        ref->getCurve().clear (&edit.getUndoManager());
+                        repaint();
+                    });
+
+                    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (this).withMousePosition());
+                    return;
+                }
+
+                um.beginNewTransaction();
+                automationDrag.param = param;
+
+                if (pointIndex >= 0)
+                {
+                    automationDrag.pointIndex = pointIndex;
+                }
+                else if (pos.x >= headerWidth)
+                {
+                    // Click on empty lane space: add a point there, then let the drag move it
+                    const auto area = lane.withTrimmedLeft (headerWidth).reduced (0, 6).toFloat();
+                    const auto normalised = juce::jlimit (0.0f, 1.0f, (area.getBottom() - pos.y) / area.getHeight());
+                    const auto time = seconds (juce::jmax (0.0, snap (xToTime (pos.x))));
+
+                    automationDrag.pointIndex = curve.addPoint (te::EditPosition (time), param->valueRange.convertFrom0to1 (normalised), 0.0f, &um);
+                }
+
+                repaint();
+                return;
+            }
+        }
     }
 
     // Clips: select and start a move/trim
@@ -604,6 +890,32 @@ void ArrangementView::mouseDown (const juce::MouseEvent& e)
 
 void ArrangementView::mouseDrag (const juce::MouseEvent& e)
 {
+    if (automationDrag.param != nullptr && automationDrag.pointIndex >= 0)
+    {
+        // Find the lane this parameter is shown in, so the value maps to the right height
+        const auto tracks = getTracks();
+
+        for (int i = 0; i < tracks.size(); ++i)
+        {
+            if (getLaneParameter (*tracks[i]) != automationDrag.param.get())
+                continue;
+
+            const auto area = getAutomationLaneBounds (i).withTrimmedLeft (headerWidth).reduced (0, 6).toFloat();
+            const auto normalised = juce::jlimit (0.0f, 1.0f, (area.getBottom() - e.position.y) / area.getHeight());
+            const auto time = seconds (juce::jmax (0.0, snap (xToTime (e.position.x))));
+            auto& param = *automationDrag.param;
+
+            // Points stay sorted by time, so the index can change as a point passes its neighbours
+            automationDrag.pointIndex = param.getCurve().movePoint (automationDrag.pointIndex, te::EditPosition (time),
+                                                                     param.valueRange.convertFrom0to1 (normalised),
+                                                                     std::nullopt, false, &edit.getUndoManager());
+            repaint();
+            break;
+        }
+
+        return;
+    }
+
     if (drag.mode == DragMode::scrub)
     {
         edit.getTransport().setPosition (seconds (juce::jmax (0.0, xToTime (e.position.x))));
@@ -660,10 +972,30 @@ void ArrangementView::mouseDrag (const juce::MouseEvent& e)
 void ArrangementView::mouseUp (const juce::MouseEvent&)
 {
     drag = {};
+    automationDrag = {};
+    repaint();
 }
 
 void ArrangementView::mouseMove (const juce::MouseEvent& e)
 {
+    // Automation lanes: hand over a point, crosshair elsewhere (click adds a point)
+    {
+        const auto tracks = getTracks();
+        const auto index = trackIndexAtY ((int) e.position.y);
+
+        if (juce::isPositiveAndBelow (index, tracks.size()) && e.position.x >= headerWidth)
+        {
+            const auto lane = getAutomationLaneBounds (index);
+
+            if (auto* param = getLaneParameter (*tracks[index]); param != nullptr && lane.contains (e.position.toInt()))
+            {
+                setMouseCursor (findAutomationPointNear (*param, e.position, lane) >= 0 ? juce::MouseCursor::DraggingHandCursor
+                                                                                        : juce::MouseCursor::CrosshairCursor);
+                return;
+            }
+        }
+    }
+
     DragMode mode = DragMode::none;
     auto* clip = findClipAt (e.position, mode);
 
@@ -695,6 +1027,16 @@ void ArrangementView::mouseDoubleClick (const juce::MouseEvent& e)
 {
     if (e.position.x < headerWidth || e.position.y < rulerHeight)
         return;
+
+    // Double-clicks in an automation lane are just two clicks, not "create a MIDI clip"
+    {
+        const auto tracks = getTracks();
+        const auto index = trackIndexAtY ((int) e.position.y);
+
+        if (juce::isPositiveAndBelow (index, tracks.size()) && getLaneParameter (*tracks[index]) != nullptr
+             && getAutomationLaneBounds (index).contains (e.position.toInt()))
+            return;
+    }
 
     DragMode mode = DragMode::none;
 
@@ -856,7 +1198,7 @@ void ArrangementView::timerCallback()
     auto& transport = edit.getTransport();
 
     // Page the view along with the playhead during playback
-    if (transport.isPlaying() && drag.mode == DragMode::none)
+    if (transport.isPlaying() && drag.mode == DragMode::none && automationDrag.param == nullptr)
     {
         const auto playheadX = timeToX (transport.getPosition().inSeconds());
 

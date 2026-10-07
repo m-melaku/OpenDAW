@@ -110,7 +110,13 @@ namespace
                 {
                     return param->valueToString (param->valueRange.convertFrom0to1 ((float) v)) + param->getLabel();
                 };
-                slider.onDragStart = [this] { param->getEdit().getUndoManager().beginNewTransaction(); };
+                // The gesture lets live automation recording capture slider moves during playback
+                slider.onDragStart = [this]
+                {
+                    param->getEdit().getUndoManager().beginNewTransaction();
+                    param->parameterChangeGestureBegin();
+                };
+                slider.onDragEnd = [this] { param->parameterChangeGestureEnd(); };
                 slider.onValueChange = [this] { param->setNormalisedParameter ((float) slider.getValue(), juce::sendNotification); };
                 slider.updateText();
                 addAndMakeVisible (slider);

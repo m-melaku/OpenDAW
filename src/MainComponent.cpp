@@ -33,6 +33,15 @@ MainComponent::MainComponent()
     closeEditorButton.onClick = [this] { closeBottomPanel(); };
     mixerButton.onClick = [this] { toggleMixer(); };
     mixerButton.setTooltip ("Show/hide the mixer (Ctrl+M)");
+
+    // While on, moving faders, knobs or plugin sliders during playback records automation
+    writeAutomationButton.setClickingTogglesState (true);
+    writeAutomationButton.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xffd04040));
+    writeAutomationButton.setTooltip ("Record automation: while on, moving any control during playback draws its curve");
+    writeAutomationButton.onClick = [this]
+    {
+        edit->getAutomationRecordManager().setWritingAutomation (writeAutomationButton.getToggleState());
+    };
     snapButton.onClick = [this] { arrangement->setSnapToGrid (snapButton.getToggleState()); };
     snapButton.setToggleState (true, juce::dontSendNotification);
 
@@ -57,7 +66,8 @@ MainComponent::MainComponent()
     editorTitle.setFont (juce::FontOptions (14.0f, juce::Font::bold));
 
     for (auto* c : std::initializer_list<juce::Component*> { &menuBar, &playButton, &stopButton, &addTrackButton,
-                                                              &addInstrumentButton, &mixerButton, &settingsButton, &snapButton,
+                                                              &addInstrumentButton, &mixerButton, &writeAutomationButton,
+                                                              &settingsButton, &snapButton,
                                                               &tempoSlider, &tempoLabel, &positionLabel,
                                                               &editorTitle, &gridBox, &closeEditorButton })
     {
@@ -114,6 +124,10 @@ void MainComponent::setEdit (std::unique_ptr<te::Edit> newEdit)
 
     tempoSlider.setValue (edit->tempoSequence.getTempo (0)->getBpm(), juce::dontSendNotification);
     playButton.setButtonText ("Play");
+
+    // Each project starts with automation writing off, so playback never overwrites curves by surprise
+    writeAutomationButton.setToggleState (false, juce::dontSendNotification);
+    edit->getAutomationRecordManager().setWritingAutomation (false);
 
     resized();
     updateWindowTitle();
@@ -378,6 +392,8 @@ void MainComponent::resized()
     addInstrumentButton.setBounds (toolbar.removeFromLeft (100));
     toolbar.removeFromLeft (6);
     mixerButton.setBounds (toolbar.removeFromLeft (70));
+    toolbar.removeFromLeft (6);
+    writeAutomationButton.setBounds (toolbar.removeFromLeft (90));
     settingsButton.setBounds (toolbar.removeFromRight (120));
     positionLabel.setBounds (toolbar);
 

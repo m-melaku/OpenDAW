@@ -44,6 +44,7 @@ private:
     juce::MenuBarComponent menuBar { this };
     juce::TextButton playButton { "Play" }, stopButton { "Stop" }, addTrackButton { "+ Track" },
                      addInstrumentButton { "+ Instrument" }, mixerButton { "Mixer" },
+                     writeAutomationButton { "Write Auto" },
                      settingsButton { "Audio Settings" },
                      closeEditorButton { "Close" };
     juce::ToggleButton snapButton { "Snap" };
