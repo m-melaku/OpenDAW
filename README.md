@@ -28,7 +28,7 @@ You can also open the `.sln`/`.slnx` file in `build/` in Visual Studio to build 
 
 ## Roadmap
 
-- [ ] **M0: Playable core.** Transport, tempo, and drag-and-drop audio files onto tracks
+- [x] **M0: Playable core.** Transport, tempo, and drag-and-drop audio files onto tracks
 - [ ] **M1: Arrangement.** Move and trim clips, multiple tracks, undo/redo, save and load projects
 - [ ] **M2: MIDI.** MIDI tracks, piano roll, VST3 instruments
 - [ ] **M3: Mixing.** Mixer view, sends and buses, automation, built-in EQ, compressor and reverb
