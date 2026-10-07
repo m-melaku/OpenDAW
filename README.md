@@ -11,9 +11,14 @@ recording and mixing.
 
 ## Downloading
 
-Every build on GitHub produces a ready-to-run `OpenDAW.exe`: open the
-[Actions tab](../../actions), pick the latest green run, and download **OpenDAW-windows** under *Artifacts*.
+**[Download the latest build](../../releases/download/latest/OpenDAW.exe)** — this link always points to
+the newest build, so you can re-download the same URL after every change instead of hunting for a new
+Actions run. It's updated automatically on every push to `main` or a `milestone-*` branch; see the
+[latest release](../../releases/tag/latest) for which commit it was built from.
 Windows SmartScreen may warn about an unsigned app; choose **More info → Run anyway**.
+
+Alternatively, every CI run also keeps its own build under the [Actions tab](../../actions) →
+pick a run → **OpenDAW-windows** under *Artifacts*, if you need a specific past build.
 
 ## Using OpenDAW
 
