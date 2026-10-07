@@ -11,6 +11,7 @@ A Windows DAW built with C++20, JUCE 8.0.13 and Tracktion Engine 3.5 (`external/
 ## Workflow
 - Name feature branches `milestone-N-...` so pushes publish to `latest`. Open a PR to `main`. **The user merges, never Claude.**
 - Don't stack PRs on each other's branches. GitHub merged stacked PRs into their parent branches instead of `main`.
+- Ask the user to merge with **Create a merge commit**, not squash. Squashing rewrites history and causes false conflicts with open branches. Fix those with `git merge -s ours origin/main`, but only after checking that the branch is a superset of `main`.
 - Don't run CI monitors unless asked. Keep replies short.
 - End commit messages with the attribution line given in the session.
 
